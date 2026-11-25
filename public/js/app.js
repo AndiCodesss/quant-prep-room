@@ -637,7 +637,7 @@ function makeInk(host,opts={}){
     e.preventDefault();selOff();document.documentElement.classList.add("inking");
     const ae=document.activeElement;if(ae&&ae!==document.body&&ae.blur)ae.blur();
     try{cv.setPointerCapture(e.pointerId)}catch(_){}
-    clearMarks();const p=pt(e),g={id:e.pointerId,type:e.pointerType,t0:Date.now(),x0:e.clientX,y0:e.clientY,far:0};
+    const p=pt(e),g={id:e.pointerId,type:e.pointerType,t0:Date.now(),x0:e.clientX,y0:e.clientY,far:0};
     if(INK.tool==="erase"){cur=Object.assign(g,{erase:true,before:strokes});eraseAt(p);return}
     snap();const hi=INK.tool==="hi",q=INK[hi?"hi":"pen"];
     cur=Object.assign(g,{pts:[p],t:hi?"hi":"pen",c:q.c,w:q.w,before:hist[hist.length-1]});strokes.push(cur);
@@ -710,10 +710,11 @@ function makeInk(host,opts={}){
     tap=null;
     if(a==="undo"||a==="redo"){
       const un=a==="undo",from=un?hist:redo,to=un?redo:hist;
-      if(!cur&&from.length){to.push(strokes);strokes=from.pop();clearMarks();draw();changed();if(say)inkSay(un?"Undo":"Redo",900)}
+      if(!cur&&from.length){to.push(strokes);strokes=from.pop();draw();changed();if(say)inkSay(un?"Undo":"Redo",900)}
       else if(!cur&&say)inkSay(un?"Nothing to undo":"Nothing to redo",1100);
     }
-    if(a==="clear"){clearSol();if(strokes.length&&!cur){snap();strokes=[];clearMarks();draw();changed()}}
+    // Clear wipes the ink, the corrections and the book answer, and takes a pad made taller back to its first height.
+    if(a==="clear"&&!cur){clearSol();clearMarks();if(strokes.length){snap();strokes=[];changed()}if(H!==H0){H=H0;size();fitTask()}draw()}
     if(a==="calc")calc();
     if(a==="grow"){H+=220;size()}
     // Home is the way back when you are lost: the task and the work, at 100%.
@@ -785,7 +786,7 @@ function makeInk(host,opts={}){
       const put=()=>{
         if(!strokes.includes(ln.seed))return;
         const it={calc:1,txt:(eq?"":"= ")+res.text,x:Math.round((R.x1+dh*.45)*10)/10,y:Math.round((R.y0+R.y1)*5)/10,h:Math.round(dh/.7)};it.pts=calcPts(it);
-        tap=null;clearMarks();snap();strokes.push(it);draw();changed();
+        tap=null;snap();strokes.push(it);draw();changed();
         const q=sbox(it);ensure(q.x0-8,q.y0-10,q.x1+18,q.y1+10);
         inkSay("Read as "+read+" =",2600);
       };
@@ -796,13 +797,21 @@ function makeInk(host,opts={}){
     }finally{busy=false;syncDock()}
   }
   // Marks are fractions of the exported image; map them back onto the pad.
+  // Marks are fractions of the exported image; map them back onto the page. A red circle is then pulled tight around
+  // the ink it covers: the model's box is a little loose, and the point is to show exactly which symbols are wrong.
   function setMarks(list){
     clearMarks();if(!box)return;let k=0;
+    const ink=strokes.filter(s=>s.t!=="hi"&&s.pts.length).map(s=>{let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;s.pts.forEach(q=>{x0=Math.min(x0,q.x);y0=Math.min(y0,q.y);x1=Math.max(x1,q.x);y1=Math.max(y1,q.y)});return{x0,y0,x1,y1}});
     list.forEach(m=>{const [a,b,c,d]=m.f;const el=document.createElement("div");el.className="mk"+(m.ok?" ok":"");
-      const l=box.x+a*box.w-4,w=Math.max(24,(c-a)*box.w+8);
-      el.style.left=l+"px";el.style.top=(box.y+b*box.h-4)+"px";
-      el.style.width=w+"px";el.style.height=Math.max(24,(d-b)*box.h+8)+"px";
-      const n=document.createElement("b");n.textContent=m.ok?"\u2713":++k;el.append(n);mk.append(el);marks.push(el)});
+      let x0=box.x+a*box.w,y0=box.y+b*box.h,x1=box.x+c*box.w,y1=box.y+d*box.h;
+      if(!m.ok){
+        // strokes whose middle lies in the box and that are not much wider than it (a long fraction bar is not "the 6")
+        const g=6,w=x1-x0,hit=ink.filter(s=>{const cx=(s.x0+s.x1)/2,cy=(s.y0+s.y1)/2;return cx>=x0-g&&cx<=x1+g&&cy>=y0-g&&cy<=y1+g&&s.x1-s.x0<=1.5*w+20});
+        if(hit.length){x0=Math.min(...hit.map(s=>s.x0));y0=Math.min(...hit.map(s=>s.y0));x1=Math.max(...hit.map(s=>s.x1));y1=Math.max(...hit.map(s=>s.y1))}
+      }
+      el.style.left=(x0-5)+"px";el.style.top=(y0-5)+"px";
+      el.style.width=Math.max(22,x1-x0+10)+"px";el.style.height=Math.max(22,y1-y0+10)+"px";
+      const n=document.createElement("b");n.textContent=m.ok?"✓":++k;el.append(n);mk.append(el);marks.push(el)});
   }
   function focus(i){marks.forEach((el,k)=>el.classList.toggle("on",k===i));const el=marks[i];if(i>=0&&el){ensure(el.offsetLeft-16,el.offsetTop-16,el.offsetLeft+el.offsetWidth+34,el.offsetTop+el.offsetHeight+16);pad.scrollIntoView({block:"nearest",behavior:"smooth"})}}
   return{isEmpty:()=>!strokes.length,toBlob,setMarks,focus,setSolution,reveal,revealAll,clearSol,get lastSize(){return lastSize},
@@ -881,7 +890,7 @@ const CHECK_FMT=String.raw`Reply with only a JSON object of this shape:
  "summary": "Markdown, at most 60 words: first what the student did right (be specific), then the one thing to fix. Math in $...$",
  "say": "2-3 spoken sentences a tutor would say first: the verdict, what was done right, and in one phrase where it went off. Do not explain the mistake yet",
  "marks": [{"box": [x0, y0, x1, y1], "ok": false,
-   "issue": "what is wrong here, at most 8 words",
+   "issue": "at most 10 words that name the exact symbols that are wrong as the student wrote them, then what is wrong with them, for example 'The sign > should have flipped' or 'The 6 should be 9'",
    "kind": "slip" | "rule",
    "rule": {"name": "the usual name of the rule or concept that was broken, at most 5 words", "is": "that rule stated correctly and in general, one line of at most 16 words, formula in $...$"},
    "why": "Markdown, at most 35 words: what the student did, the tempting wrong idea behind it, and why the rule does not allow it. Math in $...$",
@@ -894,7 +903,7 @@ const CHECK_FMT=String.raw`Reply with only a JSON object of this shape:
 Rules:
 - verdict: "correct" = method and final answer are right. "partly" = the method is right but there is a slip, or the answer is unfinished, or one of several parts is wrong. "wrong" = a rule or concept is misapplied, or the answer does not address the question.
 - box says where in the IMAGE that piece is written: fractions of the image width and height measured from the top-left corner (0 to 1), drawn tightly around the expression.
-- Marks with ok false: one per independent error, at most 3. They are circled in red on the student's page. Circle the FIRST place where the error enters, and only the wrong part of that line. Lines after it that follow correctly from the wrong line only carry the error forward: do not circle them and do not tick them.
+- Marks with ok false: one per independent error, at most 3. They are circled in red on the student's page. Circle the FIRST place where the error enters, and be exact about it: the box of an ok false mark covers ONLY the symbols that are wrong (one sign, one number, one exponent, one term), never the whole line and never the whole equation. If a single character is wrong, box that single character. The student must be able to see at a glance which symbols to change. Lines after it that follow correctly from the wrong line only carry the error forward: do not circle them and do not tick them.
 - Marks with ok true: the written lines or steps that are right, at most 4. They get a green tick and need only box and ok. Tick what was right before the first error. Never tick a line whose value is wrong, even when the step into it was carried out correctly. Always tick the final answer if it is correct.
 - If the answer was typed there is no image: give only the ok false marks, each with "box": null.
 - kind: "slip" = the method was right and the mistake is arithmetic, a sign, or copying; then "rule" is null and "why" says exactly what went wrong (for example $3\\cdot 3=6$ instead of $9$). "rule" = a rule or concept was misapplied, forgotten or invented.
