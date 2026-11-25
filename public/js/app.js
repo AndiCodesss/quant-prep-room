@@ -15,7 +15,7 @@ function mergeState(a,b){
   for(const [k,v] of Object.entries(a.rev||{})){if(!rev[k]||(v.last||"")>=(rev[k].last||""))rev[k]=v}
   const can=Object.assign({},b.can||{});
   for(const [k,v] of Object.entries(a.can||{})){if(typeof can[k]!=="string"||(typeof v==="string"&&v>can[k]))can[k]=v}
-  return{v:1,r:RESET,start:(a.start<b.start?a.start:b.start),done:Object.assign({},b.done||{},a.done||{}),can,rev,wu:((a.wu||"")>(b.wu||"")?a.wu:b.wu)||""};
+  return{v:1,r:RESET,start:(a.start<b.start?a.start:b.start),done:Object.assign({},b.done||{},a.done||{}),known:Object.assign({},b.known||{},a.known||{}),can,rev,wu:((a.wu||"")>(b.wu||"")?a.wu:b.wu)||""};
 }
 
 /* ---------------- Saved answers: what you wrote or typed in a lesson stays there ---------------- */
@@ -109,8 +109,9 @@ function renderMD(src,el,typeset=true){
 //   > [!intuition]                  intuition, tip             (violet)
 //   > [!why]                        why it matters             (teal)
 //   > [!remember]                   remember                   (amber, framed)
+//   > [!notation]                   a sign and how to read it  (grey)
 // Lessons written before the tags existed are boxed by their headings ("Common mistakes", "Example", ...).
-const BOXES={rule:["rule","Rule"],definition:["rule","Definition"],formula:["rule","Formula"],example:["example","Worked example"],warning:["warning","Watch out"],mistake:["warning","Watch out"],intuition:["intuition","The idea"],tip:["intuition","Tip"],why:["why","Why it matters"],remember:["remember","Remember"]};
+const BOXES={rule:["rule","Rule"],definition:["rule","Definition"],formula:["rule","Formula"],example:["example","Worked example"],warning:["warning","Watch out"],mistake:["warning","Watch out"],intuition:["intuition","The idea"],tip:["intuition","Tip"],why:["why","Why it matters"],remember:["remember","Remember"],notation:["notation","New notation"]};
 function lessonBox(type,title){
   const d=document.createElement("div"),h=document.createElement("div"),b=document.createElement("b"),s=document.createElement("span");
   d.className="box box-"+BOXES[type][0];h.className="box-h";b.textContent=BOXES[type][1];s.textContent=title||"";h.append(b,s);d.append(h);return d;
@@ -148,7 +149,39 @@ function renderLesson(src,el){
   // 4) The opening paragraph, and the plain-English reading under a formula.
   const first=el.firstElementChild;if(first&&first.tagName==="P")first.classList.add("lead");
   el.querySelectorAll("p").forEach(p=>{if(/^\s*In words:/i.test(p.textContent))p.classList.add("inwords-line")});
+  notationBoxes(el);
   typesetNow(el);
+}
+// Notation is explained where it first turns up. Before the paragraph (or box) in which a sign from the Symbols
+// table appears for the first time in a lesson, a grey "New notation" box says how to read it, what it means and
+// shows one small example. It keeps appearing in later lessons until "Got it" is tapped for that sign.
+function notationBoxes(el){
+  const known=S.known||{},seen=new Set(),at=new Map();
+  el.querySelectorAll("p,li,td,th").forEach(node=>{
+    if(node.closest(".box-h,.box-notation"))return;
+    const tex=(node.textContent.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g)||[]).join(" ");if(!tex)return;
+    SYMS.forEach((s,i)=>{
+      if(seen.has(i)||known[s[0]]||!s[3]||!s[3].test(tex))return;
+      seen.add(i);
+      const spot=node.closest(".box")||node.closest("ul,ol,table")||node;
+      if(!at.has(spot))at.set(spot,[]);at.get(spot).push(i);
+    });
+  });
+  at.forEach((ids,spot)=>{
+    const d=lessonBox("notation",ids.length>1?"new signs in the next lines":"a new sign in the next lines");
+    ids.forEach(i=>{
+      const [tex,say,what,,ex]=SYMS[i],row=document.createElement("div");row.className="nt";
+      row.innerHTML='<div class="nt-s"></div><div class="nt-b"><div class="nt-say"></div><div class="nt-what"></div><div class="nt-ex"></div></div><button type="button" class="btn sm">Got it</button>';
+      row.querySelector(".nt-s").textContent="$"+tex+"$";
+      row.querySelector(".nt-say").textContent="Say: “"+say+"”";
+      const w=row.querySelector(".nt-what"),x=row.querySelector(".nt-ex");
+      if(what)renderMD(what,w,false);else w.remove();
+      if(ex)renderMD("**For example:** "+ex,x,false);else x.remove();
+      row.querySelector("button").onclick=()=>{S.known=S.known||{};S.known[tex]=today();save();row.remove();if(!d.querySelector(".nt"))d.remove()};
+      d.append(row);
+    });
+    spot.before(d);
+  });
 }
 const doneCount=()=>LESSONS.filter(l=>S.done[l.id]).length;
 const nextLesson=()=>LESSONS.find(l=>!S.done[l.id])||LESSONS[LESSONS.length-1];
@@ -189,7 +222,7 @@ function lessonPrompt(L){
   const topic=L.review
     ? "Today is a REVIEW day for week "+L.w+" ("+wk[0]+"). The week covered: "+wk[1].join("; ")+". Write a short recap of the key results (formulas, definitions, one-line intuition each), then 7 mixed practice problems across the week, in shuffled order, not grouped by topic."+mix
     : "Today's lesson: week "+L.w+" of 52 ("+L.phase+" phase, week theme: "+wk[0]+"). Topic: "+L.title+". Earlier this week: "+wk[1].slice(0,L.d-1).join("; ")+(L.d>1?".":"(this is the first day).")+" Write a self-contained lesson of about 45 minutes: start with intuition in plain language, then the precise definitions/statements (state the sets variables live in), then at least two fully worked examples step by step, a short 'common mistakes' list, and a closing paragraph on why it matters for quantitative finance or the interview. The student finds mathematical notation hard to read: directly below every displayed formula add a line in italics starting with 'In words:' that reads the formula aloud in plain English, and the first time any symbol appears (for example a capital sigma for sums, the element-of sign, the integral sign, a prime for derivatives) name the symbol and say how it is pronounced. Then 5 practice problems of increasing difficulty. The FIRST problem is shown before the lesson as a try-first question, so it must be approachable with intuition alone. Make the 4th problem combine today's topic with something from earlier in the course, and the 5th an interview-style 'explain why' question.";
-  return ctx+"\n\n"+topic+"\n\nIf the topic is not mathematical (for example application documents or interview practice), give concrete practical guidance and exercises instead, using what is known about this program: application 15 Nov–15 Jan, CHF 200 fee, CV and course summary on the program's templates, 1-page motivation letter, two referees, a 20-minute Zoom interview in March with a math part (calculus, linear algebra, probability and statistics) and a finance/economics part.\n\nFORMAT, follow exactly:\n- Markdown only, no HTML. Use ## and ### headings.\n- Math in LaTeX: inline as $...$ and display as $$...$$ on its own lines. Never use \\( \\) or \\[ \\]. Never use the dollar sign for money; write CHF or USD.\n- LAYOUT of the lesson (not the practice part). The page shows it as numbered sections with coloured boxes, so write it to be scanned, never as one long block of text:\n  * Open with one short paragraph: what today is about and why, in plain words.\n  * Then 3 to 6 sections, each starting with a ## heading that names its idea. At most 3 short paragraphs of running text per section; everything else goes into boxes.\n  * A box is a quote block whose first line is a tag and a short title, followed by an empty quote line, then the content. EVERY line of a box starts with '> ', including empty lines, list items and formulas. Inside a box a display formula sits on ONE line: > $$...$$\n  * The tags: [!intuition] the idea in everyday words or a picture, before any formula. [!rule] every definition, theorem or formula worth knowing, stated precisely with the sets the variables live in, followed by its 'In words:' line. [!example] a worked example, as numbered steps with one move per step and the reason for it. [!warning] a common mistake, shown as the wrong step, why it is wrong, and the right step. [!why] what it is used for in quantitative finance or in the interview. [!remember] the things to remember.\n  * Every lesson has at least: one [!intuition], two [!rule], two [!example], one [!warning] and one [!why]. It ENDS with one box '> [!remember] Things to remember' holding 3 to 5 bullet points, each one fact or formula the student should be able to write down from memory tomorrow.\n  * Example of a box:\n> [!rule] Product rule for powers\n>\n> For $a>0$ and real numbers $x, y$:\n>\n> $$a^x a^y=a^{x+y}$$\n>\n> *In words: to multiply two powers of the same base, add the exponents.*\n- After the lesson, a line containing only ===PRACTICE===\n- Then each problem as a block starting with a line 'Q:' followed by the question, then a line 'A:' followed by a complete worked answer. Separate blocks with a line containing only ---\n- Do not use --- anywhere else.";
+  return ctx+"\n\n"+topic+"\n\nIf the topic is not mathematical (for example application documents or interview practice), give concrete practical guidance and exercises instead, using what is known about this program: application 15 Nov–15 Jan, CHF 200 fee, CV and course summary on the program's templates, 1-page motivation letter, two referees, a 20-minute Zoom interview in March with a math part (calculus, linear algebra, probability and statistics) and a finance/economics part.\n\nFORMAT, follow exactly:\n- Markdown only, no HTML. Use ## and ### headings.\n- Math in LaTeX: inline as $...$ and display as $$...$$ on its own lines. Never use \\( \\) or \\[ \\]. Never use the dollar sign for money; write CHF or USD.\n- LAYOUT of the lesson (not the practice part). The page shows it as numbered sections with coloured boxes, so write it to be scanned, never as one long block of text:\n  * Open with one short paragraph: what today is about and why, in plain words.\n  * Then 3 to 6 sections, each starting with a ## heading that names its idea. At most 3 short paragraphs of running text per section; everything else goes into boxes.\n  * A box is a quote block whose first line is a tag and a short title, followed by an empty quote line, then the content. EVERY line of a box starts with '> ', including empty lines, list items and formulas. Inside a box a display formula sits on ONE line: > $$...$$\n  * The tags: [!intuition] the idea in everyday words or a picture, before any formula. [!rule] every definition, theorem or formula worth knowing, stated precisely with the sets the variables live in, followed by its 'In words:' line. [!example] a worked example, as numbered steps with one move per step and the reason for it. [!warning] a common mistake, shown as the wrong step, why it is wrong, and the right step. [!why] what it is used for in quantitative finance or in the interview. [!remember] the things to remember. [!notation] a sign or way of writing that is new in this lesson and is NOT one of the standard signs (the page itself explains sums, products, factorials, set signs, quantifiers, arrows, limits, derivatives, integrals and the usual probability signs where they first appear): put the box directly before the first formula that uses it and give the sign, how to say it aloud, what it means, and one tiny example.\n  * Every lesson has at least: one [!intuition], two [!rule], two [!example], one [!warning] and one [!why]. It ENDS with one box '> [!remember] Things to remember' holding 3 to 5 bullet points, each one fact or formula the student should be able to write down from memory tomorrow.\n  * Example of a box:\n> [!rule] Product rule for powers\n>\n> For $a>0$ and real numbers $x, y$:\n>\n> $$a^x a^y=a^{x+y}$$\n>\n> *In words: to multiply two powers of the same base, add the exponents.*\n- After the lesson, a line containing only ===PRACTICE===\n- Then each problem as a block starting with a line 'Q:' followed by the question, then a line 'A:' followed by a complete worked answer. Separate blocks with a line containing only ---\n- Do not use --- anywhere else.";
 }
 function parseLesson(text){
   const parts=text.split(/^\s*===\s*PRACTICE\s*===\s*$/m);
@@ -849,10 +882,9 @@ function renderCheck(r,ab,fb,useInk,auto,ref){
 // Each line: {tex, say} (a formula step) or {kind:"mark", i, label, say} (a circled mistake).
 function makePlayer(host,lines,ink,plain){
   if(plain&&!TTS){host.innerHTML="";return{at(){},state(){},play(){}}}
-  const vs=TTS&&TTS.list?TTS.list():[],vcur=vs.length?TTS.current():"";
-  const vsel=vs.length>1?`<select data-voice aria-label="Voice">${vs.map(n=>`<option value="${esc(n)}"${n===vcur?" selected":""}>${esc(TTS.label?TTS.label(n):n)}</option>`).join("")}</select>`:"";
+  // Voice, speed and the natural-voice switch live in the header's voice menu only; here it is just play and stop.
   host.innerHTML=`<div class="board${plain?" plain":""}"><div class="board-h"><span class="eyebrow">${plain?"Read aloud":"Walkthrough"}</span><div class="row">
-    ${TTS?`<button type="button" class="btn sm primary" data-play>▶ Explain with voice</button><button type="button" class="btn sm" data-stop hidden>Stop</button><select data-rate aria-label="Speed"><option value="0.85">Slower</option><option value="1" selected>Normal</option><option value="1.2">Faster</option></select>${vsel}`:""}
+    ${TTS?`<button type="button" class="btn sm primary" data-play>▶ Explain with voice</button><button type="button" class="btn sm" data-stop hidden>Stop</button>`:""}
     <button type="button" class="btn sm" data-prev aria-label="Previous step">‹ Back</button><button type="button" class="btn sm" data-next aria-label="Next step">Next ›</button></div></div><div class="bsteps"></div></div>`;
   const list=host.querySelector(".bsteps");
   lines.forEach((l,i)=>{
@@ -862,7 +894,7 @@ function makePlayer(host,lines,ink,plain){
     d.querySelector(".cap").textContent=l.say;d.onclick=()=>me.at(i);list.append(d);
   });
   let idx=0;
-  const play=host.querySelector("[data-play]"),stop=host.querySelector("[data-stop]"),rate=host.querySelector("[data-rate]");
+  const play=host.querySelector("[data-play]"),stop=host.querySelector("[data-stop]");
   const me={
     at(i){idx=Math.max(0,Math.min(lines.length-1,i));[...list.children].forEach((el,k)=>el.classList.toggle("on",k===idx));const l=lines[idx];if(ink)ink.focus(l.kind==="mark"?l.i:-1);if(ink&&ink.reveal)ink.reveal(l.r!=null?l.r:-1);const el=list.children[idx];if(el&&!plain)el.scrollIntoView({block:"nearest",behavior:"smooth"})},
     state(s){if(s==="idle"&&ink&&ink.revealAll)ink.revealAll();if(!play)return;play.textContent=s==="speaking"||s==="starting"?"❚❚ Pause":s==="paused"?"▶ Resume":"▶ Explain with voice";stop.hidden=s==="idle"},
@@ -881,17 +913,15 @@ function makePlayer(host,lines,ink,plain){
     const start=()=>{
       if(PLAYER&&PLAYER!==me)PLAYER.state("idle");
       PLAYER=me;const from=idx<lines.length-1?idx:0;
-      TTS.speak(lines.slice(from).map((l,k)=>({text:(l.say||l.label||"…").slice(0,1900),id:String(from+k)})),{rate:+rate.value}).catch(e=>{
+      TTS.speak(lines.slice(from).map((l,k)=>({text:(l.say||l.label||"…").slice(0,1900),id:String(from+k)})),{rate:TTS.rate()}).catch(e=>{
         if(ink&&ink.revealAll)ink.revealAll();
-        if(e&&(e.code==="not_granted"||e.code==="unavailable")){TTS=null;play.remove();stop.remove();rate.remove()}
+        if(e&&(e.code==="not_granted"||e.code==="unavailable")){TTS=null;play.remove();stop.remove()}
         else if(e&&e.code==="no_gesture"){play.textContent="▶ Tap again to play"}
         else if(e&&e.code==="busy"){play.textContent="▶ Busy, tap again"}
         else if(e&&e.code==="rate_limited"){play.textContent="Voice paused for now";play.disabled=true}
       });
     };
     stop.onclick=()=>{TTS&&TTS.stop().catch(()=>{})};
-    rate.onchange=()=>{if(PLAYER===me&&TTS&&TTS.active())TTS.setRate(+rate.value).catch(()=>{})};
-    const vc=host.querySelector("[data-voice]");if(vc)vc.onchange=()=>{if(TTS&&TTS.setVoice)TTS.setVoice(vc.value)};
   }
   typesetNow(list);
   return me;
@@ -1255,42 +1285,44 @@ function viewBooks(){
 }
 
 /* ---------------- Notation in words ---------------- */
+// Each sign: [TeX, how to say it, what it means, how to spot it in a lesson's TeX, a small example to read].
+// The fourth entry lets a lesson explain a sign on the spot the first time it shows up (see notationBoxes).
 const SYMS=[
- [String.raw`\sum_{k=1}^{n} a_k`,"the sum of a k, for k from 1 to n","Add up all the terms. The sign is a capital Greek sigma."],
- [String.raw`\prod_{k=1}^{n} a_k`,"the product of a k, for k from 1 to n","Multiply all the terms. The sign is a capital Greek pi."],
- [String.raw`n!`,"n factorial","1 times 2 times 3, up to n."],
- [String.raw`\binom{n}{k}`,"n choose k","The number of ways to pick k things out of n."],
- [String.raw`x \in A`,"x is in A, or x is an element of A","x is one of the things in the set A."],
- [String.raw`A \subseteq B`,"A is a subset of B","Everything in A is also in B."],
- [String.raw`A \cup B`,"A union B","Everything that is in A or in B."],
- [String.raw`A \cap B`,"A intersect B","Only what is in both A and B."],
- [String.raw`A^{\mathsf c},\ \emptyset`,"A complement; the empty set","Everything not in A; the set with nothing in it."],
- [String.raw`\mathbb{R},\ \mathbb{N}`,"the real numbers; the natural numbers","All numbers on the number line; the counting numbers 1, 2, 3 and so on."],
- [String.raw`\forall x`,"for all x","The statement holds for every x."],
- [String.raw`\exists x`,"there exists an x","At least one such x can be found."],
- [String.raw`\Rightarrow,\ \iff`,"implies; if and only if","If the left is true, so is the right; both are true or both are false."],
- [String.raw`f: A \to B`,"f from A to B","A function that takes inputs from A and gives outputs in B."],
- [String.raw`x \mapsto x^2`,"x maps to x squared","The rule: what the function does to its input."],
- [String.raw`|x|`,"the absolute value of x","The size of x without its sign: its distance from zero."],
- [String.raw`\approx,\ \neq,\ \le,\ \propto`,"approximately equal; not equal; less than or equal to; proportional to",""],
- [String.raw`\infty`,"infinity","Larger than any number. Not a number itself."],
- [String.raw`\lim_{x\to a} f(x)`,"the limit of f of x as x goes to a","The value f of x gets close to when x gets close to a."],
- [String.raw`\varepsilon,\ \delta`,"epsilon; delta","Greek letters used for very small positive numbers."],
- [String.raw`\Delta x`,"delta x","A change in x. Capital Greek delta."],
- [String.raw`f'(x),\ \frac{df}{dx}`,"f prime of x; d f d x","The derivative: how fast f changes when x changes."],
- [String.raw`\frac{\partial f}{\partial x}`,"partial f, partial x","The derivative with respect to x while the other variables stay fixed."],
- [String.raw`\int_a^b f(x)\,dx`,"the integral from a to b of f of x, d x","The area under the curve of f between a and b."],
- [String.raw`e^x,\ \ln x`,"e to the x; the natural log of x","The exponential function and its inverse. In this course, log always means the natural log."],
- [String.raw`\mathbf{A}^{\top},\ \mathbf{A}^{-1},\ \det \mathbf{A}`,"A transpose; A inverse; the determinant of A","Rows and columns swapped; the matrix that undoes A; one number that tells whether A can be inverted."],
- [String.raw`\Omega,\ \omega`,"capital omega; omega","The sample space, meaning all possible outcomes; one single outcome."],
- [String.raw`P(A \mid B)`,"the probability of A given B","How likely A is once you know B happened. The bar is read as given."],
- [String.raw`E[X]`,"the expected value of X, or E of X","The long-run average of the random variable X."],
- [String.raw`\operatorname{Var}(X),\ \sigma^2`,"the variance of X; sigma squared","How spread out X is around its mean."],
- [String.raw`\mu,\ \sigma,\ \lambda`,"mu; sigma; lambda","Greek letters: usually the mean, the standard deviation, and a rate."],
- [String.raw`X \sim N(\mu,\sigma^2)`,"X is distributed normal with mean mu and variance sigma squared","The wavy line is read as: is distributed as."],
- [String.raw`\Gamma(a)`,"gamma of a","The gamma function. Capital Greek gamma."],
- [String.raw`\mathcal{F}`,"script F","A sigma-algebra: the collection of events you can assign a probability to."],
- [String.raw`E[X \mid \mathcal{G}]`,"the conditional expectation of X given G","The best guess of X using only the information in G."]
+ [String.raw`\sum_{k=1}^{n} a_k`,"the sum of a k, for k from 1 to n","Add up all the terms. The sign is a capital Greek sigma. Below it is where the counter k starts, above it where it stops.",/\\sum/,String.raw`$\sum_{k=1}^{3} k^2 = 1+4+9 = 14$`],
+ [String.raw`\prod_{k=1}^{n} a_k`,"the product of a k, for k from 1 to n","Multiply all the terms. The sign is a capital Greek pi.",/\\prod/,String.raw`$\prod_{k=1}^{4} k = 1\cdot2\cdot3\cdot4 = 24$`],
+ [String.raw`n!`,"n factorial","1 times 2 times 3, up to n.",/[\w)}]\s*!/,String.raw`$4! = 4\cdot3\cdot2\cdot1 = 24$`],
+ [String.raw`\binom{n}{k}`,"n choose k","The number of ways to pick k things out of n, when the order does not matter.",/\\binom|\\choose/,String.raw`$\binom{4}{2}=6$: there are six ways to pick 2 people out of 4`],
+ [String.raw`x \in A`,"x is in A, or x is an element of A","x is one of the things in the set A.",/\\in(?![a-zA-Z])/,String.raw`$3 \in \{1,2,3\}$ is true, $5 \in \{1,2,3\}$ is false`],
+ [String.raw`A \subseteq B`,"A is a subset of B","Everything in A is also in B.",/\\subseteq|\\subset(?![a-z])/,String.raw`$\{1,2\} \subseteq \{1,2,3\}$`],
+ [String.raw`A \cup B`,"A union B","Everything that is in A or in B, or in both.",/\\cup(?![a-z])/,String.raw`$\{1,2\} \cup \{2,3\} = \{1,2,3\}$`],
+ [String.raw`A \cap B`,"A intersect B","Only what is in both A and B.",/\\cap(?![a-z])/,String.raw`$\{1,2\} \cap \{2,3\} = \{2\}$`],
+ [String.raw`A^{\mathsf c},\ \emptyset`,"A complement; the empty set","Everything not in A; the set with nothing in it.",/\\emptyset|\\varnothing|\^\{\\mathsf c\}|\^c(?![a-z])/,""],
+ [String.raw`\mathbb{R},\ \mathbb{N}`,"the real numbers; the natural numbers","All numbers on the number line; the counting numbers 1, 2, 3 and so on.",/\\mathbb\{[RNZQ]\}/,String.raw`$\sqrt2 \in \mathbb{R}$, but $\sqrt2 \notin \mathbb{N}$`],
+ [String.raw`\forall x`,"for all x","The statement that follows holds for every single x, with no exception. One counterexample makes it false.",/\\forall/,String.raw`$\forall x \in \mathbb{R}:\ x^2 \ge 0$. Read: for all real x, x squared is at least zero`],
+ [String.raw`\exists x`,"there exists an x","At least one such x can be found. It does not say which one, or how many.",/\\exists/,String.raw`$\exists x \in \mathbb{R}:\ x^2 = 2$. Read: there is a real x whose square is 2`],
+ [String.raw`\Rightarrow,\ \iff`,"implies; if and only if","One arrow: if the left side is true, then the right side is true too (it says nothing when the left is false). Double arrow: each side forces the other, so both are true or both are false.",/\\Rightarrow|\\implies|\\iff|\\Leftrightarrow|\\Longrightarrow/,String.raw`$x=2 \Rightarrow x^2=4$ is true, but not the other way round, because $x=-2$ also works. $x^2=4 \iff x=2 \text{ or } x=-2$`],
+ [String.raw`f: A \to B`,"f from A to B","A function that takes inputs from the set A and gives outputs in the set B. A is the domain, B the codomain.",/:\s*[^$]*\\to(?![a-z])|\\colon/,String.raw`$\ln:(0,\infty)\to\mathbb{R}$: the log takes positive numbers and returns real numbers`],
+ [String.raw`x \mapsto x^2`,"x maps to x squared",String.raw`The rule of a function: on the left what goes in, on the right what comes out. The arrow with the small bar is about single values; the plain arrow in $f:A\to B$ is about whole sets.`,/\\mapsto/,String.raw`$x \mapsto x^2$ sends 3 to 9 and $-3$ to 9`],
+ [String.raw`|x|`,"the absolute value of x","The size of x without its sign: its distance from zero. $|x-a|$ is the distance between x and a.",/\|[^|$]+\|/,String.raw`$|-3| = 3$, and $|x-5|<1$ means x is between 4 and 6`],
+ [String.raw`\approx,\ \neq,\ \le,\ \propto`,"approximately equal; not equal; less than or equal to; proportional to","",/\\approx|\\neq|\\le(?![a-zA-Z])|\\leq(?![a-z])|\\ge(?![a-zA-Z])|\\geq(?![a-z])|\\propto/,""],
+ [String.raw`\infty`,"infinity","Larger than any number. Not a number itself: it says that something grows without bound.",/\\infty/,""],
+ [String.raw`\lim_{x\to a} f(x)`,"the limit of f of x as x goes to a","The value f of x gets close to when x gets close to a.",/\\lim(?![a-z])/,String.raw`$\lim_{n\to\infty}\frac1n = 0$`],
+ [String.raw`\varepsilon,\ \delta`,"epsilon; delta","Greek letters used for very small positive numbers.",/\\varepsilon|\\epsilon|\\delta/,""],
+ [String.raw`\Delta x`,"delta x","A change in x. Capital Greek delta.",/\\Delta/,String.raw`from $x=2$ to $x=5$: $\Delta x = 3$`],
+ [String.raw`f'(x),\ \frac{df}{dx}`,"f prime of x; d f d x","The derivative: how fast f changes when x changes.",/[a-zA-Z]'|\\frac\{d[a-zA-Z]?\}\{d[a-zA-Z]\}/,String.raw`$f(x)=x^2 \Rightarrow f'(x)=2x$`],
+ [String.raw`\frac{\partial f}{\partial x}`,"partial f, partial x","The derivative with respect to x while the other variables stay fixed.",/\\partial/,""],
+ [String.raw`\int_a^b f(x)\,dx`,"the integral from a to b of f of x, d x","The area under the curve of f between a and b.",/\\int/,String.raw`$\int_0^1 x\,dx = \frac12$`],
+ [String.raw`e^x,\ \ln x`,"e to the x; the natural log of x","The exponential function and its inverse. In this course, log always means the natural log.",/e\^|\\ln(?![a-z])|\\exp(?![a-z])/,String.raw`$\ln(e^3) = 3$`],
+ [String.raw`\mathbf{A}^{\top},\ \mathbf{A}^{-1},\ \det \mathbf{A}`,"A transpose; A inverse; the determinant of A","Rows and columns swapped; the matrix that undoes A; one number that tells whether A can be inverted.",/\\top(?![a-z])|\\mathbf\{[A-Z]\}\^\{-1\}|\\det(?![a-z])/,""],
+ [String.raw`\Omega,\ \omega`,"capital omega; omega","The sample space, meaning all possible outcomes; one single outcome.",/\\Omega|\\omega/,String.raw`one die: $\Omega=\{1,2,3,4,5,6\}$`],
+ [String.raw`P(A \mid B)`,"the probability of A given B","How likely A is once you know B happened. The bar is read as given.",/P\([^)$]*(\\mid|\|)/,""],
+ [String.raw`E[X]`,"the expected value of X, or E of X","The long-run average of the random variable X.",/E\[/,String.raw`a fair die: $E[X]=3.5$`],
+ [String.raw`\operatorname{Var}(X),\ \sigma^2`,"the variance of X; sigma squared","How spread out X is around its mean.",/\\operatorname\{Var\}|\\mathrm\{Var\}|\\text\{Var\}|\\sigma\^2/,""],
+ [String.raw`\mu,\ \sigma,\ \lambda`,"mu; sigma; lambda","Greek letters: usually the mean, the standard deviation, and a rate.",/\\mu(?![a-z])|\\sigma(?![a-z])|\\lambda/,""],
+ [String.raw`X \sim N(\mu,\sigma^2)`,"X is distributed normal with mean mu and variance sigma squared","The wavy line is read as: is distributed as.",/\\sim(?![a-z])/,""],
+ [String.raw`\Gamma(a)`,"gamma of a","The gamma function. Capital Greek gamma.",/\\Gamma/,""],
+ [String.raw`\mathcal{F}`,"script F","A sigma-algebra: the collection of events you can assign a probability to.",/\\mathcal\{[FG]\}/,""],
+ [String.raw`E[X \mid \mathcal{G}]`,"the conditional expectation of X given G","The best guess of X using only the information in G.",/E\[[^\]$]*\\mid/,""]
 ];
 function viewSymbols(){
   V.innerHTML=`<article class="sheet"><div class="eyebrow">Symbols</div><h1>How to read the signs</h1>
@@ -1447,10 +1479,12 @@ function voiceUI(t){
       :st==="starting"?"Starting a GPU session on Colab. This usually takes one to three minutes, longer when Colab is busy. Until then this device's voice reads, and everything else works as usual."
       :st==="stopping"?"Releasing the GPU…"
       :"Explanations are read in this device's own voice. The natural voice runs on a Colab GPU and uses roughly 2 compute units per hour while it is on.";
-    const voices=t.list().filter(n=>n.indexOf("nat:")===0),cur=t.current();
+    const voices=t.list(),cur=t.current(),rate=t.rate();
     pop.innerHTML=`<h3>Tutor voice</h3><p></p>${i.error?'<p class="pill warn" data-err></p>':""}
       <div class="row">${!i.enabled?"":st==="off"?'<button type="button" class="btn sm primary" data-start>Start natural voice</button>':st==="ready"||st==="starting"?'<button type="button" class="btn sm" data-stop>Switch it off</button>':""}
-      ${voices.length?`<select data-nat aria-label="Natural voice">${voices.map(n=>`<option value="${esc(n)}"${n===cur?" selected":""}>${esc(t.label(n).replace("Natural · ",""))}</option>`).join("")}</select>`:""}</div>
+</div>
+      ${voices.length>1?`<label class="vrow"><span>Voice</span><select data-nat aria-label="Voice">${voices.map(n=>`<option value="${esc(n)}"${n===cur?" selected":""}>${esc(t.label(n))}</option>`).join("")}</select></label>`:""}
+      <label class="vrow"><span>Speed</span><select data-rate aria-label="Speed">${[[0.85,"Slower"],[1,"Normal"],[1.2,"Faster"]].map(([v,n])=>`<option value="${v}"${v===rate?" selected":""}>${n}</option>`).join("")}</select></label>
       ${i.enabled?`<label><input type="checkbox" data-auto ${t.auto()?"checked":""}><span>Start the natural voice by itself when I begin studying</span></label>`:""}
       <div class="foot"><span class="note">Signed in</span><button type="button" class="btn sm" data-out>Sign out</button></div>`;
     pop.querySelector("p").textContent=about;
@@ -1459,10 +1493,14 @@ function voiceUI(t){
     on("[data-start]","click",()=>{t.prime();t.startSession()});
     on("[data-stop]","click",()=>t.stopSession());
     on("[data-nat]","change",e=>t.setVoice(e.target.value));
+    on("[data-rate]","change",e=>t.setRate(+e.target.value));
     on("[data-auto]","change",e=>t.setAuto(e.target.checked));
     on("[data-out]","click",()=>Platform.logout());
   }
-  const open=o=>{pop.hidden=!o;btn.setAttribute("aria-expanded",String(o));if(o){t.refresh();paint()}};
+  // The menu hangs under its button but never leaves the window, wherever the header has wrapped the button to.
+  const place=()=>{const r=btn.getBoundingClientRect(),w=pop.offsetWidth;pop.style.left=Math.max(10,Math.min(window.innerWidth-w-10,r.right-w))+"px";pop.style.top=(r.bottom+8)+"px"};
+  const open=o=>{pop.hidden=!o;btn.setAttribute("aria-expanded",String(o));if(o){t.refresh();paint();place()}};
+  window.addEventListener("resize",()=>{if(!pop.hidden)place()});
   btn.onclick=()=>open(pop.hidden);
   document.addEventListener("pointerdown",e=>{if(!pop.hidden&&!e.target.closest(".voicebox"))open(false)});
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!pop.hidden){open(false);btn.focus()}});

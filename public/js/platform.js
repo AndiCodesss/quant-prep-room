@@ -113,7 +113,7 @@ const Platform = (() => {
     const dev = deviceVoice();
     const AC = window.AudioContext || window.webkitAudioContext;
     let info = { enabled: false, state: "off", voices: [], error: "" };
-    let st = "idle", rate = 1, run = 0, ctx = null, sources = [], aborter = null, viaDevice = false, ticker = 0, pollT = 0;
+    let st = "idle", rate = +lsGet("qpr-rate") || 1, run = 0, ctx = null, sources = [], aborter = null, viaDevice = false, ticker = 0, pollT = 0;
     const onL = [], onS = [], onI = [];
     const set = (s, reason) => { st = s; onS.forEach(f => { try { f({ state: s, reason }) } catch (e) {} }) };
     const line = e => onL.forEach(f => { try { f(e) } catch (_) {} });
@@ -203,7 +203,8 @@ const Platform = (() => {
       pause() { if (viaDevice) dev.pause(); else if (ctx && st !== "idle") { ctx.suspend(); set("paused") } return Promise.resolve() },
       resume() { if (viaDevice) dev.resume(); else if (ctx && st === "paused") { ctx.resume(); set("speaking") } return Promise.resolve() },
       stop() { if (viaDevice) { run++; dev.stop() } else { run++; halt(); if (ctx && ctx.state === "suspended") ctx.resume(); if (st !== "idle") set("idle", "stopped") } return Promise.resolve() },
-      setRate(r) { rate = r; if (dev) dev.setRate(r); return Promise.resolve() },
+      rate: () => rate,
+      setRate(r) { rate = r; lsSet("qpr-rate", String(r)); if (dev) dev.setRate(r); return Promise.resolve() },
       onLine(f) { onL.push(f) }, onState(f) { onS.push(f) },
       // Voices on offer right now: the natural ones while the GPU session is up, and always the device's own.
       list: () => [...(info.state === "ready" && AC ? info.voices.map(v => "nat:" + v) : []), ...(dev ? dev.list() : [])],

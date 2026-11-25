@@ -285,7 +285,7 @@ html.inking,html.inking *{-webkit-user-select:none!important;user-select:none!im
 #voiceBtn[data-state="ready"] .vdot{background:var(--good)}
 #voiceBtn[data-state="starting"] .vdot,#voiceBtn[data-state="stopping"] .vdot{background:var(--warn)}
 @media (prefers-reduced-motion:no-preference){#voiceBtn[data-state="starting"] .vdot{animation:pulse 1.1s ease-in-out infinite}@keyframes pulse{50%{opacity:.25}}}
-.voicepop{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:min(320px,calc(100vw - 24px));padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.18);font-size:14px}
+.voicepop{position:fixed;z-index:30;width:min(320px,calc(100vw - 24px));padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.18);font-size:14px}
 .voicepop h3{margin:0 0 4px;font-size:15px}
 .voicepop p{margin:0 0 10px;color:var(--muted);font-size:13.5px}
 .voicepop .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -395,3 +395,17 @@ body.login{min-height:100vh;min-height:100dvh;display:grid;place-items:center;pa
 .box-remember li{margin:.35em 0}
 .prose .inwords-line{font-size:.93em;color:var(--muted);margin-top:-.2em}
 .box .inwords-line{color:inherit;opacity:.85}
+
+/* "New notation" boxes: a sign explained where a lesson first uses it */
+.box-notation{--c:var(--muted);background:var(--paper);border:1px dashed var(--line);border-left:4px solid var(--c)}
+.nt{display:grid;grid-template-columns:minmax(64px,auto) minmax(0,1fr) auto;gap:6px 14px;align-items:start;padding:8px 0}
+.nt+.nt{border-top:1px solid var(--line)}
+.nt-s{font-size:1.15em;align-self:center;min-width:72px}
+.nt-say{font-family:var(--f-ui);font-weight:600;font-size:15.5px}
+.nt-what,.nt-ex{font-size:.92em}
+.nt-what p,.nt-ex p{margin:.15em 0}
+.nt-ex{color:var(--muted)}
+.nt .btn{align-self:center;white-space:nowrap}
+@media (max-width:520px){.nt{grid-template-columns:minmax(0,1fr) auto}.nt-s{grid-column:1/-1}}
+.voicepop .vrow{display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;margin-top:8px}
+.voicepop .vrow span{color:var(--muted);font-size:13px}
