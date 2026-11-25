@@ -91,6 +91,18 @@ $$a^0=1,\qquad a^{-x}=\frac{1}{a^x},\qquad a^{1/n}=\sqrt[n]{a}.$$
 
 Why $a^0=1$? Because $\frac{a^x}{a^x}=1$ and also $=a^{x-x}=a^0$. Most rules can be re-derived like this, so you never need to memorize blindly.
 
+The rules as a picture. Every curve passes through $(0,1)$, because $a^0=1$. To the left of zero the exponent is negative, so the power is a fraction: small, but never zero and never negative. And a base below 1 falls where a base above 1 rises.
+
+~~~plot
+title: The power $a^x$ for three bases
+f: 2^x | $2^x$
+f: 3^x | $3^x$
+f: 0.5^x | $\left(\frac12\right)^x=2^{-x}$
+x: -3..3
+y: 0..9
+point: 0, 1 | a⁰ = 1
+~~~
+
 **Worked examples.**
 
 1. $\dfrac{2^5\cdot 2^{-2}}{2^2}=2^{5-2-2}=2^1=2$.
@@ -106,6 +118,25 @@ Why $a^0=1$? Because $\frac{a^x}{a^x}=1$ and also $=a^{x-x}=a^0$. Most rules can
 ## Why this matters for quant finance
 
 Compounding is pure exponent algebra. CHF 100 at 5% a year for 10 years grows to $100\cdot 1.05^{10}\approx 162.89$. Growth over two periods multiplies: $(1+r_1)(1+r_2)$. Next lesson we turn these products into sums with logarithms.
+
+Look at how far apart the curves end up. The straight line pays 5 francs every year and nothing on the interest already earned. The curve above it is the same 5%, with interest on interest: that gap is the whole point of the exponent.
+
+~~~plot
+title: CHF 100 left alone for 40 years
+f: 100*1.05^x | 5% a year, compounded
+f: 100+5x | 5% a year without interest on interest
+f: 100*1.02^x | 2% a year, compounded
+x: 0..40
+xlabel: years
+ylabel: CHF
+~~~
+
+> [!use] Where you meet fractions and powers
+>
+> - **Comparing prices in a shop.** 750 g for CHF 4.20, or 1.2 kg for CHF 6.30? Per kilo that is $\frac{4.20}{0.75}=5.60$ against $\frac{6.30}{1.2}=5.25$. The larger pack is cheaper, and all it took was dividing by a fraction.
+> - **A savings account or a loan.** CHF 10 000 at 3% a year for 20 years becomes $10\,000\cdot1.03^{20}\approx 18\,061$. The same power tells you what a debt grows to when nothing is paid back.
+> - **Inflation.** At 2% a year, prices multiply by $1.02^{10}\approx1.22$ in ten years. Going the other way is a negative exponent: CHF 100 in ten years buys what $100\cdot1.02^{-10}\approx 82$ francs buy today.
+> - **Computers.** Each extra bit doubles the number of values: $2^{10}=1024$ and $2^{32}\approx 4.3$ billion. That is why a 32-bit counter runs out, and why one more bit is always "twice as much".
 
 > [!remember] Things to remember
 >
@@ -153,11 +184,35 @@ Invest 1 franc at 100% interest, compounded $n$ times a year. After one year you
 
 As $n\to\infty$ this approaches $e\approx 2.71828$. More generally $\left(1+\frac{r}{n}\right)^{nt}\to e^{rt}$: continuous compounding.
 
+The table as a picture: each dot is one way of splitting the year. The dots climb quickly at first and then hardly at all. They never cross the dashed line.
+
+~~~plot
+title: Compounding more and more often approaches e
+seq: (1+1/n)^n | $\left(1+\frac1n\right)^n$
+n: 1..24
+y: 1.9..2.8
+hline: e | e ≈ 2.718
+xlabel: times compounded per year
+~~~
+
 ## The natural log
 
 $\ln x=\log_e x$. In the program's documents, **"log" always means the natural log**. Key facts:
 
 $$e^{\ln x}=x\ (x>0),\qquad \ln(e^x)=x,\qquad \ln 1=0,\qquad \ln e=1.$$
+
+"Undo each other" has a picture: the two graphs are mirror images in the line $y=x$. Whatever point $(a,b)$ lies on $e^x$, the point $(b,a)$ lies on $\ln x$. You can also see that $\ln x$ exists only to the right of zero, is negative between 0 and 1, and keeps growing, but ever more slowly.
+
+~~~plot
+title: ln undoes the exponential: mirror images in the line y = x
+f: exp(x) | $e^x$
+f: ln(x) | $\ln x$
+f: x | $y=x$
+x: -3..5
+y: -3..5
+point: 0, 1 | e⁰ = 1
+point: 1, 0 | ln 1 = 0
+~~~
 
 ## Why this matters: log returns
 
@@ -166,6 +221,13 @@ If a price goes from $P_0$ to $P_1$, the log return is $\ln(P_1/P_0)$. Over two 
 $$\ln\frac{P_2}{P_0}=\ln\frac{P_2}{P_1}+\ln\frac{P_1}{P_0},$$
 
 so log returns simply **add**. Simple returns do not. This is the first question in the asset pricing part of the self-assessment.
+
+> [!use] Where you meet logarithms
+>
+> - **How long until my money doubles?** At 3% a year you solve $1.03^t=2$, so $t=\frac{\ln 2}{\ln 1.03}\approx 23.4$ years. Bankers use the shortcut "72 divided by the rate in percent": $72/3=24$.
+> - **Earthquakes and loudness.** The Richter and decibel scales are logarithms. Magnitude 7 shakes the ground 10 times as much as magnitude 6, and 10 decibels more is 10 times the sound power. Logs squeeze numbers that range over many powers of ten onto a short scale.
+> - **Chemistry.** pH is $-\log_{10}$ of the hydrogen ion concentration, so pH 3 is ten times as acidic as pH 4.
+> - **Stock charts.** A long-run price chart is drawn on a log axis, so that the same percentage move has the same height whether the price was 10 or 1000. And the "daily return" in a risk model is usually the log return $\ln(P_1/P_0)$, because those add up over days.
 
 > [!remember] Things to remember
 >
@@ -201,11 +263,34 @@ The **discriminant** $\Delta=b^2-4ac$ tells you how many real solutions there ar
 
 Often factoring is faster: $x^2-5x+6=(x-2)(x-3)=0$, so $x=2$ or $x=3$. A product is zero exactly when one factor is zero.
 
+Solving $ax^2+bx+c=0$ means asking where the parabola $y=ax^2+bx+c$ meets the $x$-axis. That is what the discriminant counts: the blue parabola crosses twice, the green one just touches, the violet one stays above the axis and has no real solution.
+
+~~~plot
+title: The solutions of a quadratic are where its parabola meets the x-axis
+f: x^2-5x+6 | $x^2-5x+6$: two solutions
+f: x^2-4x+4 | $x^2-4x+4$: one solution
+f: x^2-2x+3 | $x^2-2x+3$: none
+x: -1..6
+y: -1..8
+point: 2, 0 | x = 2
+point: 3, 0 | x = 3
+~~~
+
 ## Inequalities
 
 Same moves as equations, with one rule: **multiplying or dividing by a negative number flips the sign.**
 
 $$-2x>6 \iff x<-3.$$
+
+Why the sign flips: the line $-2x+4$ falls from left to right. It is above 10 only to the **left** of $x=-3$. Drag across the picture and watch the value pass 10.
+
+~~~plot
+title: −2x + 4 > 10 holds where the line lies above the dashed level
+f: -2x+4 | $-2x+4$
+hline: 10 | 10
+vline: -3 | x = −3
+x: -6..2
+~~~
 
 ## Absolute value and distance
 
@@ -215,9 +300,39 @@ $$|x-a|<\varepsilon \iff a-\varepsilon<x<a+\varepsilon.$$
 
 Read it as: "$x$ is within $\varepsilon$ of $a$". In week 5 the definition of a limit is written exactly in this language.
 
+The graph of $|x-3|$ is a V with its tip at 3. It is below the dashed line $0.5$ exactly between $2.5$ and $3.5$.
+
+~~~plot
+title: |x − 3| < 0.5 means x lies between 2.5 and 3.5
+f: abs(x-3) | $|x-3|$
+hline: 0.5 | ε = 0.5
+vline: 2.5 | 2.5
+vline: 3.5 | 3.5
+x: 1..5
+y: 0..2
+~~~
+
 ## Two equations, two unknowns
 
 $x+y=10$ and $x-y=4$. Add them: $2x=14$, so $x=7$ and then $y=3$. In week 15 you'll do this with matrices.
+
+Each equation is a line, and the solution is the one point that lies on both.
+
+~~~plot
+title: Two equations, two lines: the solution is where they cross
+f: 10-x | $x+y=10$
+f: x-4 | $x-y=4$
+x: 0..10
+point: 7, 3 | (7, 3)
+~~~
+
+> [!use] Where you solve equations and inequalities
+>
+> - **Break-even.** A coffee stall costs CHF 300 a day and earns CHF 2.50 per cup. $2.5x-300=0$ gives $x=120$ cups, and the inequality $2.5x-300>0$ says "anything above 120 is profit".
+> - **Which phone plan is cheaper?** Plan A costs CHF 20 plus 0.10 per minute, plan B a flat CHF 35. $20+0.1x<35$ gives $x<150$: below 150 minutes take A. It is the two-lines picture above.
+> - **Braking.** Driving schools use: stopping distance in metres $\approx 3u+u^2$ with $u=\frac{v}{10}$ and $v$ in km/h. "How fast may I go to stop within 40 m?" is the quadratic $u^2+3u-40=0$, so $(u+8)(u-5)=0$, $u=5$, and $v=50$ km/h.
+> - **Tolerances and limits.** A part of 20 mm that may be off by 0.05 mm: $|x-20|\le 0.05$. A bank's risk limit reads the same way: "the position stays within CHF 1 million of the target".
+> - **The yield of an investment.** CHF 1000 grew to 1102.50 in two years. $1000(1+r)^2=1102.5$ is a quadratic in $r$, with the sensible solution $r=5\%$.
 
 > [!remember] Things to remember
 >
@@ -245,6 +360,28 @@ $$f:A\to B,\qquad x\mapsto f(x).$$
 
 $A$ is the **domain** (allowed inputs), $B$ the **codomain**. Example: $f:\mathbb{R}\to\mathbb{R},\ f(x)=x^2$. And $\ln:(0,\infty)\to\mathbb{R}$, because $\ln x$ only exists for $x>0$. The self-assessment explicitly asks you to "indicate the sets on which the variables are defined" — this is what they mean.
 
+## A function as a graph
+
+A function can be seen in two ways. As a **rule**: put in $x$, get out $f(x)$. And as a **graph**: draw every point $(x, f(x))$, and the rule becomes a curve you can look at.
+
+To read a value off a graph, start at the input on the horizontal axis, go straight up (or down) to the curve, then straight across to the vertical axis. There is the output. Drag your finger across the picture and the page does it for you.
+
+~~~plot
+title: Reading $f(x)=x^2$ off its graph: input 2, output 4
+f: x^2 | $f(x)=x^2$
+x: -3..3
+vline: 2 | input 2
+hline: 4 | output 4
+point: 2, 4 | (2, f(2))
+~~~
+
+> [!intuition] What a graph tells you at a glance
+>
+> - **Where it crosses the horizontal axis**: the solutions of $f(x)=0$.
+> - **Rising or falling**: whether a larger input gives a larger or a smaller output. In week 6 the derivative measures how steeply.
+> - **Gaps**: inputs that are not allowed. $\ln x$ has no graph to the left of zero.
+> - **One output per input**: any vertical line meets the graph at most once. A circle is not the graph of a function, because a vertical line through it hits two points.
+
 ## Shapes to know
 
 - **Linear** $f(x)=mx+b$: a line with slope $m=\frac{\Delta y}{\Delta x}$.
@@ -252,18 +389,72 @@ $A$ is the **domain** (allowed inputs), $B$ the **codomain**. Example: $f:\mathb
 - **Exponential** $e^x$: always positive, grows faster than any polynomial.
 - **Logarithm** $\ln x$: the mirror image of $e^x$ in the line $y=x$.
 
+All four in one picture. Use the "Try your own" field below it to change them: what does $2x+1$ do to the line, and $-x^2$ to the parabola?
+
+~~~plot
+title: The four shapes to know
+f: 0.5x+1 | linear: $\frac12x+1$
+f: x^2 | quadratic: $x^2$
+f: exp(x) | exponential: $e^x$
+f: ln(x) | logarithm: $\ln x$
+x: -3..4
+y: -3..8
+~~~
+
 ## Composition and inverses
 
 $(f\circ g)(x)=f(g(x))$: apply $g$ first, then $f$. Order matters.
 
 The inverse $f^{-1}$ undoes $f$: $f^{-1}(f(x))=x$. To find it, write $y=f(x)$ and solve for $x$. Example: $y=3x+2 \Rightarrow x=\frac{y-2}{3}$, so $f^{-1}(y)=\frac{y-2}{3}$.
 
+Swapping input and output swaps the two axes, so the graph of the inverse is the mirror image in the line $y=x$.
+
+~~~plot
+title: A function and its inverse are mirror images in y = x
+f: 3x+2 | $f(x)=3x+2$
+f: (x-2)/3 | $f^{-1}(x)=\frac{x-2}{3}$
+f: x | $y=x$
+x: -6..8
+y: -6..8
+~~~
+
 ## Even and odd functions
 
 - **Even:** $f(-x)=f(x)$ (mirror symmetric), like $x^2$.
 - **Odd:** $f(-x)=-f(x)$ (point symmetric), like $x^3$ or $\frac{x}{1+x^2}$.
 
-Odd functions have a useful property you'll prove in week 9: over a symmetric interval, $\int_{-K}^{K}f(x)\,dx=0$. The self-assessment uses exactly this with $\frac{x}{1+x^2}$.
+~~~plot
+title: Even: a mirror image left and right. Odd: the same after half a turn about 0
+f: x^2 | even: $x^2$
+f: x^3 | odd: $x^3$
+f: x/(1+x^2) | odd: $\frac{x}{1+x^2}$
+x: -2..2
+y: -3..4
+~~~
+
+Odd functions have a useful property you'll prove in week 9: over a symmetric interval, $\int_{-K}^{K}f(x)\,dx=0$. The self-assessment uses exactly this with $\frac{x}{1+x^2}$. An integral is an area, counted negative below the axis, and in the picture the area on the left cancels the one on the right.
+
+~~~plot
+title: Why an odd function integrates to zero over [−K, K]: the two areas cancel
+f: x/(1+x^2) | $\frac{x}{1+x^2}$
+x: -4..4
+shade: -4..4
+~~~
+
+> [!use] Where functions turn up
+>
+> - **Every price list is a function.** A taxi charges CHF 6.80 to get in plus 3.80 per km: $f(x)=6.8+3.8x$. The slope is the price per km, and the value at 0 is what you pay before moving. For 12 km: $6.8+3.8\cdot12=52.40$.
+> - **Converting back is an inverse.** $F=1.8C+32$ turns Celsius into Fahrenheit. Solving for $C$ gives the function for the way back, $C=\frac{F-32}{1.8}$: 68 °F is 20 °C.
+> - **One thing after another is a composition.** 20% off, then 8.1% VAT: $g(f(p))=1.081\cdot0.8\,p$. A currency conversion after a price change, or tax on a bonus, works the same way.
+> - **An option's payoff.** A call option with strike 100 pays $\max(S-100,\,0)$ at expiry, a function of the share price $S$: nothing up to 100, then one franc for every franc above. Traders think in these pictures all day.
+
+~~~plot
+title: Payoff of a call option with strike 100
+f: (abs(x-100)+x-100)/2 | payoff $\max(S-100,\,0)$
+x: 60..140
+xlabel: share price S at expiry
+ylabel: payoff
+~~~
 
 > [!remember] Things to remember
 >
@@ -303,6 +494,25 @@ $$\sum_{k=1}^{n}k=\frac{n(n+1)}{2},\qquad \sum_{k=1}^{n}k^2=\frac{n(n+1)(2n+1)}{
 
 $$S-rS=1-r^n \ \Rightarrow\ S=\frac{1-r^n}{1-r}.$$
 
+A sum can be drawn too: one dot per term. Blue is what is added at each step, green is the total so far. With $r=\frac12$ the terms shrink so fast that the total never gets past 2.
+
+~~~plot
+title: 1 + 1/2 + 1/4 + …: the terms shrink, the total approaches 2
+seq: 0.5^n | the term $\left(\frac12\right)^n$
+seq: 2-0.5^n | the sum up to that term
+n: 0..10
+hline: 2 | the totals approach 2
+~~~
+
+Compare that with adding $1+2+3+\dots$, where the terms grow and the total runs away like half of $n^2$:
+
+~~~plot
+title: 1 + 2 + … + n
+seq: n | the term $k$
+seq: n(n+1)/2 | the sum $\frac{n(n+1)}{2}$
+n: 1..10
+~~~
+
 ## Shifting the index
 
 $\sum_{k=3}^{10}a_k$ with $j=k-2$ becomes $\sum_{j=1}^{8}a_{j+2}$. Change the bounds and the term together.
@@ -318,6 +528,24 @@ For a random variable taking values $x$ with probabilities $P(X=x)$,
 $$E[X]=\sum_x x\,P(X=x).$$
 
 A fair die: $E[X]=\sum_{k=1}^{6}k\cdot\frac16=\frac{21}{6}=3.5$.
+
+Think of the probabilities as weights on a ruler. The expectation is the point where the ruler balances, and for the die that is 3.5, a value the die never shows.
+
+~~~plot
+title: A fair die: six equal weights, balancing at 3.5
+seq: 1/6 | $P(X=k)=\frac16$
+n: 1..6
+y: 0..0.3
+vline: 3.5 | E[X] = 3.5
+~~~
+
+> [!use] Where sums turn up
+>
+> - **A savings plan.** CHF 200 at the end of every month for 10 years at 0.25% a month is a geometric sum: $200\cdot\frac{1.0025^{120}-1}{0.0025}\approx 27\,950$, of which 24 000 were paid in.
+> - **Bond prices and mortgages.** The price of a bond is the sum of its discounted payments, $\sum_{k=1}^{n}\frac{C}{(1+r)^k}$. A mortgage payment is found by setting such a sum equal to the loan.
+> - **Averages.** A mean is a sum divided by a count: $\bar x=\frac1n\sum_{k=1}^{n}x_k$. Every statistic in a report starts as a $\Sigma$.
+> - **The fair price of an insurance.** Expected payout is each payout times its probability, added up. For a 1-in-200 chance of a CHF 30 000 claim the insurer needs at least $\frac{1}{200}\cdot30\,000=150$ per customer.
+> - **Counting work.** In a league of 10 teams where everyone plays everyone once there are $9+8+\dots+1=\frac{9\cdot10}{2}=45$ matches.
 
 > [!remember] Things to remember
 >

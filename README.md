@@ -11,6 +11,7 @@ It is a self-hosted web app for one person. You write with a stylus on an endles
 - **A short video per lesson.** Under the opening paragraph sits a YouTube explanation of under five minutes, loaded only when played. Weeks 1 to 4 have picked videos; any lesson takes a pasted link.
 - **Handwriting checks.** Write an answer with an Apple Pencil, a finger or a mouse and tap *Check my work*. The verdict appears within a second or two. Correct steps get a green tick, mistakes a red circle, and the book answer is written next to your work. Each mistake is explained like a tutor would: the rule that was broken, why your step breaks it, the corrected step and a quick self-check for next time. A wrong answer is explained aloud, and while a line of the book answer is read, the exact piece the sentence is about lights up. A right answer is not read out.
 - **A real writing palette.** Pen, highlighter and eraser with colours and sizes, undo and redo, a page that pans without end and zooms with a pinch, and a floating toolbar you can drag anywhere or fold away. Two quick taps of the Pencil tip switch to the eraser and back.
+- **Graphs you can touch, and what it is for.** Lessons draw their functions, sequences and areas (a fenced `plot` block becomes a graph): drag across to read values off, or type a formula of your own into the same picture. An "In real life" box shows each topic doing a job, with numbers.
 - **A calculator that reads your page.** Write `1000 · 1.04^3 =`, tap *= Calc*, and the result is written after your equals sign. Claude only reads the expression; the arithmetic is done locally by a small parser (`public/js/calc.js`).
 - **As much practice as you want.** Eight problems per lesson, each rule practised at least twice, and a button that writes four more, aimed at what went badly. Checking an answer rates it, and a lesson marks itself done once its problems are checked.
 - **Notation where it appears.** The first time a sign such as the mapping arrow or "for all" shows up in a lesson, a box right there says how to read it and what it means, until you tap "Got it".
@@ -92,7 +93,7 @@ Everything is in `.env`; `.env.example` documents each setting.
 ## Tests
 
 ```bash
-npm test      # the calculator's parser: 125 cases
+npm test      # the calculator and graph formula parser: 127 cases
 ```
 
 ## Adapting it

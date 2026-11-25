@@ -65,7 +65,7 @@ const Calc=(()=>{
   };
   const ALIAS={arcsin:"asin",arccos:"acos",arctan:"atan",dfrac:"frac",tfrac:"frac",nck:"ncr",comb:"ncr",tg:"tan"};
 
-  function parse(s){
+  function parse(s,vars){
     let pos=0,tok=null,last=null,bars=0;const modes=[false]; // modes: does a comma separate two values here (inside C(5,2)) or is it a decimal comma
     function lex(){
       while(s[pos]===" ")pos++;
@@ -105,6 +105,7 @@ const Calc=(()=>{
     const operand=()=>is("(")||is("[")?group():is("-")?(adv(),-power()):power();
     function ident(){
       const name=tok.v,raw=tok.raw;adv();
+      if(vars&&Object.prototype.hasOwnProperty.call(vars,name))return vars[name];
       if(name==="pi")return Math.PI;
       if(name==="e")return Math.E;
       if(name==="frac"){if(!is("("))fail("A fraction needs a top and a bottom.");const a=group();if(!is("("))fail("A fraction needs a top and a bottom.");const b=group();if(b===0)fail("That divides by zero.");return a/b}
@@ -190,5 +191,14 @@ const Calc=(()=>{
       return{ok:false,error:e instanceof RangeError?"That is nested too deeply for the calculator.":"The calculator can't work that out."};
     }
   }
-  return{evaluate,format};
+  // A formula in one letter, for drawing graphs: compile("x^2-1") gives a function of x that returns a number,
+  // or NaN where the formula has no value (ln of a negative number, a division by zero). null if it can't be read.
+  function compile(src,name){
+    name=name||"x";let s;
+    try{s=norm(src)}catch(e){return null}
+    const f=v=>{try{const r=parse(s,{[name]:v});return isFinite(r)?r:NaN}catch(e){return NaN}};
+    // Readable at all? Somewhere on a spread of test values it has to give a number.
+    return[0.37,1.3,-1.3,2.6,7.1,-7.1,0.01,25,1,2,3,10].some(v=>!isNaN(f(v)))?f:null;
+  }
+  return{evaluate,format,compile};
 })();

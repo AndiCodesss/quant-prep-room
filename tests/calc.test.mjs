@@ -147,3 +147,24 @@ test("never throws, never evaluates code",()=>{
   for(const e of [null,undefined,{},"constructor","__proto__","alert(1)","process.exit()","toString","1;2","a=>a"]){const r=Calc.evaluate(e);assert.equal(r.ok,false)}
   assert.equal(/\beval\b\s*\(|new Function|Function\(/.test(src),false);
 });
+// Formulas in a letter, for the graphs in lessons.
+test("compile: a formula in x becomes a function",()=>{
+  const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,a+" vs "+b);
+  near(Calc.compile("x^2-5x+6")(2),0);
+  near(Calc.compile("-2x+4")(-3),10);
+  near(Calc.compile("100*1.05^x")(2),110.25);
+  near(Calc.compile("(abs(x-100)+x-100)/2")(120),20);
+  near(Calc.compile("(abs(x-100)+x-100)/2")(80),0);
+  near(Calc.compile("x/(1+x^2)")(-1),-0.5);
+  near(Calc.compile("y = exp(x)")(1),Math.E);
+  near(Calc.compile("n(n+1)/2","n")(10),55);
+  near(Calc.compile("(1+1/n)^n","n")(1),2);
+  near(Calc.compile("1/6","n")(4),1/6);
+});
+test("compile: no value gives NaN, nonsense gives null",()=>{
+  assert.ok(Number.isNaN(Calc.compile("ln(x)")(-1)));
+  assert.ok(Number.isNaN(Calc.compile("1/x")(0)));
+  assert.equal(Calc.compile("hello world"),null);
+  assert.equal(Calc.compile(""),null);
+  assert.equal(Calc.compile("constructor"),null);
+});

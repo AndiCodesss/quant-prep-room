@@ -117,7 +117,126 @@ function renderMD(src,el,typeset=true){
   else{html=src.split(/\n{2,}/).map(p=>"<p>"+esc(p)+"</p>").join("");}
   html=html.replace(/MJXPH(\d+)Q/g,(m,i)=>esc(math[+i]));
   el.innerHTML=window.DOMPurify?DOMPurify.sanitize(html):html;
+  el.querySelectorAll("pre > code.language-plot").forEach(c=>{const f=makePlot(c.textContent),pre=c.parentNode;if(f)pre.replaceWith(f);else pre.remove()});
   if(typeset)typesetNow(el);
+}
+/* ---------------- Graphs ---------------- */
+// A fenced block with the language "plot" becomes a graph. One instruction per line:
+//   f: x^2 - 1 | $y=x^2-1$     a curve (up to five), with an optional label after " | "
+//   seq: 0.5^n | the terms     values at the whole numbers n, as dots on stems (sequences, sums, probabilities)
+//   x: -3..3   (or n: 0..10)   the range shown
+//   y: -2..8                   optional; otherwise chosen from the curves
+//   point: 1, 0 | a zero       a marked point
+//   vline: 2 | label           hline: 1 | label        dashed guide lines
+//   shade: 0..2                the area between the first curve and the x-axis
+//   title: ...   xlabel: ...   ylabel: ...
+// Drag across a graph to read values off the curves; "Try your own" draws one more formula into the same picture.
+const SVGNS="http://www.w3.org/2000/svg";
+const svgEl=(tag,attrs,cls)=>{const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(cls)e.setAttribute("class",cls);return e};
+let PLOTN=0;
+function plotSpec(text){
+  const o={f:[],seq:[],pts:[],vl:[],hl:[],shade:null,x:null,y:null,title:"",xlabel:"",ylabel:""};
+  const val=s=>{const r=Calc.evaluate(s);return r.ok?r.value:NaN};
+  const range=s=>{const p=s.split("..");if(p.length!==2)return null;const a=val(p[0]),b=val(p[1]);return isFinite(a)&&isFinite(b)&&b>a?[a,b]:null};
+  String(text).split("\n").forEach(line=>{
+    const m=/^\s*([a-z]+)\s*:\s*(.+?)\s*$/i.exec(line);if(!m)return;
+    const k=m[1].toLowerCase();let v=m[2],lab="";
+    if(k==="title"||k==="xlabel"||k==="ylabel"){o[k]=v;return}
+    const cut=v.lastIndexOf(" | ");if(cut>=0){lab=v.slice(cut+3).trim();v=v.slice(0,cut).trim()}
+    if(k==="f"||k==="seq"){if(o[k].length<5){const fn=Calc.compile(v,k==="f"?"x":"n");if(fn)o[k].push({fn,lab:lab||"`"+v+"`"})}}
+    else if(k==="x"||k==="n"||k==="y"){const r=range(v);if(r)o[k==="n"?"x":k]=r}
+    else if(k==="shade"){const r=range(v);if(r)o.shade=r}
+    else if(k==="point"){const i=v.indexOf(",");if(i>0){const x=val(v.slice(0,i)),y=val(v.slice(i+1));if(isFinite(x)&&isFinite(y))o.pts.push({x,y,lab})}}
+    else if(k==="vline"||k==="hline"){const a=val(v);if(isFinite(a))o[k==="vline"?"vl":"hl"].push({v:a,lab})}
+  });
+  return o;
+}
+const niceStep=(span,n)=>{const r=span/n,p=Math.pow(10,Math.floor(Math.log10(r))),f=r/p;return(f<1.5?1:f<3.5?2:f<7.5?5:10)*p};
+const plotNum=v=>{const t=String(Number((Math.abs(v)<1e-12?0:v).toPrecision(10)));return t.replace("-","−")};
+function makePlot(spec){
+  const o=plotSpec(spec);if(!o.f.length&&!o.seq.length&&!o.pts.length)return null;
+  const onlySeq=o.seq.length&&!o.f.length,W=640,H=340,L=48,R=16,T=14,B=o.xlabel?46:28;
+  let [x0,x1]=o.x||(onlySeq?[0,10]:[-5,5]);
+  const N=320,xs=Array.from({length:N+1},(_,i)=>x0+(x1-x0)*i/N),ns=[];
+  for(let n=Math.ceil(x0-1e-9);n<=x1+1e-9&&ns.length<120;n++)ns.push(n);
+  const curves=o.f.map(c=>xs.map(c.fn)),stems=o.seq.map(c=>ns.map(c.fn));
+  if(o.seq.length){const pad=Math.max(.5,(x1-x0)*.04);x0-=pad;x1+=pad} // room for the first and last stem
+  let y0,y1;
+  if(o.y)[y0,y1]=o.y;
+  else{
+    const all=[].concat(...curves,...stems).filter(isFinite).sort((a,b)=>a-b);
+    if(!all.length){y0=-1;y1=1}
+    else{
+      // A curve that shoots off (1/x near 0) must not flatten everything else: then the middle of the values decides.
+      const q=p=>all[Math.round(p*(all.length-1))],core=q(.92)-q(.08);
+      y0=all[0];y1=all[all.length-1];
+      if(core>0&&y1-y0>8*core){y0=q(.08)-core*.6;y1=q(.92)+core*.6}
+    }
+    o.pts.forEach(p=>{y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});o.hl.forEach(h=>{y0=Math.min(y0,h.v);y1=Math.max(y1,h.v)});
+    if(y0>0&&(y0<.5*y1||o.seq.length))y0=0;if(y1<0&&(y1>.5*y0||o.seq.length))y1=0;
+    if(y1-y0<1e-9){y0-=1;y1+=1}
+    const pad=(y1-y0)*.07;y0-=pad;y1+=pad;
+  }
+  const sx=x=>L+(x-x0)/(x1-x0)*(W-L-R),sy=y=>T+(y1-y)/(y1-y0)*(H-T-B),span=y1-y0;
+  const fig=document.createElement("figure");fig.className="plot";
+  if(o.title){const c=document.createElement("figcaption");renderMD(o.title,c,false);fig.append(c)}
+  const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":o.title||"Graph"}),id="plc"+(++PLOTN);
+  const clip=svgEl("clipPath",{id});clip.append(svgEl("rect",{x:L,y:T,width:W-L-R,height:H-T-B}));svg.append(clip);
+  const text=(x,y,s,cls,anchor)=>{const t=svgEl("text",{x,y,"text-anchor":anchor||"middle"},cls);t.textContent=s;return t};
+  // Grid, tick labels and the two axes.
+  const stX=onlySeq?Math.max(1,Math.round(niceStep(x1-x0,9))):niceStep(x1-x0,9),stY=niceStep(span,6);
+  for(let t=Math.ceil(x0/stX-1e-9)*stX;t<=x1+1e-9;t+=stX){svg.append(svgEl("line",{x1:sx(t),x2:sx(t),y1:T,y2:H-B},"pl-grid"),text(sx(t),H-B+15,plotNum(t),"pl-tick"))}
+  for(let t=Math.ceil(y0/stY-1e-9)*stY;t<=y1+1e-9;t+=stY){svg.append(svgEl("line",{x1:L,x2:W-R,y1:sy(t),y2:sy(t)},"pl-grid"),text(L-7,sy(t)+4,plotNum(t),"pl-tick","end"))}
+  svg.append(svgEl("rect",{x:L,y:T,width:W-L-R,height:H-T-B},"pl-frame"));
+  if(y0<0&&y1>0)svg.append(svgEl("line",{x1:L,x2:W-R,y1:sy(0),y2:sy(0)},"pl-axis"));
+  if(x0<0&&x1>0&&!onlySeq)svg.append(svgEl("line",{x1:sx(0),x2:sx(0),y1:T,y2:H-B},"pl-axis"));
+  if(o.xlabel)svg.append(text((L+W-R)/2,H-8,o.xlabel,"pl-lab"));
+  if(o.ylabel)svg.append(text(L+8,T+15,o.ylabel,"pl-lab","start"));
+  const g=svgEl("g",{"clip-path":`url(#${id})`});svg.append(g);
+  const base=sy(Math.max(y0,Math.min(y1,0)));
+  const path=ys=>{let d="",pen=false;ys.forEach((y,i)=>{if(!isFinite(y)||y<y0-2*span||y>y1+2*span){pen=false;return}d+=(pen?"L":"M")+sx(xs[i]).toFixed(1)+" "+sy(y).toFixed(1);pen=true});return d};
+  if(o.shade&&o.f.length){
+    const [a,b]=[Math.max(o.shade[0],xs[0]),Math.min(o.shade[1],xs[N])],fn=o.f[0].fn,px=[a,...xs.filter(x=>x>a&&x<b),b].filter(x=>isFinite(fn(x)));
+    if(px.length>1)g.append(svgEl("path",{d:"M"+sx(px[0]).toFixed(1)+" "+base.toFixed(1)+px.map(x=>"L"+sx(x).toFixed(1)+" "+sy(Math.max(y0-span,Math.min(y1+span,fn(x)))).toFixed(1)).join("")+"L"+sx(px[px.length-1]).toFixed(1)+" "+base.toFixed(1)+"Z"},"pl-shade pl-k0"));
+  }
+  o.vl.forEach(v=>{g.append(svgEl("line",{x1:sx(v.v),x2:sx(v.v),y1:T,y2:H-B},"pl-guide"));if(v.lab)svg.append(text(sx(v.v)+5,T+14,v.lab,"pl-note","start"))});
+  o.hl.forEach(h=>{g.append(svgEl("line",{x1:L,x2:W-R,y1:sy(h.v),y2:sy(h.v)},"pl-guide"));if(h.lab)svg.append(text(W-R-6,sy(h.v)-6,h.lab,"pl-note","end"))});
+  curves.forEach((ys,i)=>g.append(svgEl("path",{d:path(ys)},"pl-curve pl-k"+i)));
+  stems.forEach((ys,j)=>{const k=o.f.length+j,dx=(j-(stems.length-1)/2)*7;ys.forEach((y,i)=>{if(!isFinite(y))return;const X=sx(ns[i])+dx;g.append(svgEl("line",{x1:X,x2:X,y1:base,y2:sy(y)},"pl-stem pl-k"+k),svgEl("circle",{cx:X,cy:sy(y),r:4},"pl-dot pl-k"+k))})});
+  o.pts.forEach(p=>{const X=sx(p.x),Y=sy(p.y),right=X>W-150;svg.append(svgEl("circle",{cx:X,cy:Y,r:5},"pl-pt"));if(p.lab)svg.append(text(X+(right?-9:9),Y+(Y<T+26?18:-9),p.lab.replace(/\$/g,""),"pl-note",right?"end":"start"))});
+  const ownPath=svgEl("path",{d:""},"pl-curve pl-own");g.append(ownPath);
+  const cur=svgEl("g",{},"pl-cur"),cline=svgEl("line",{y1:T,y2:H-B},"pl-cline");cur.append(cline);cur.style.display="none";svg.append(cur);
+  fig.append(svg);
+  // Legend.
+  const series=[...o.f.map((c,i)=>({...c,k:"pl-k"+i})),...o.seq.map((c,j)=>({...c,k:"pl-k"+(o.f.length+j),seq:true}))];
+  const leg=document.createElement("div");leg.className="pl-leg";
+  series.forEach(s=>{const it=document.createElement("span"),sw=document.createElement("i"),lb=document.createElement("span");it.className="pl-it "+s.k;sw.className=s.seq?"dot":"";renderMD(s.lab,lb,false);it.append(sw,lb);leg.append(it)});
+  if(series.length)fig.append(leg);
+  // Reading values off: a vertical line follows the finger and the values at that x are listed below.
+  const read=document.createElement("div");read.className="pl-read";const hint="Drag across the graph to read off the values.";read.textContent=hint;fig.append(read);
+  let own=null;
+  const dots=series.map(s=>{const c=svgEl("circle",{r:5},"pl-dot "+s.k);cur.append(c);return c}),ownDot=svgEl("circle",{r:5},"pl-dot pl-own");cur.append(ownDot);
+  const fine=onlySeq?1:stX/20;
+  const move=e=>{
+    const r=svg.getBoundingClientRect();if(!r.width)return;
+    let x=x0+((e.clientX-r.left)/r.width*W-L)/(W-L-R)*(x1-x0);
+    x=Math.round(x/fine)*fine;x=Math.max(onlySeq?ns[0]:xs[0],Math.min(onlySeq?ns[ns.length-1]:xs[N],x));
+    cur.style.display="";cline.setAttribute("x1",sx(x));cline.setAttribute("x2",sx(x));
+    read.textContent="";const xl=document.createElement("b");xl.textContent=(onlySeq?"n":"x")+" = "+plotNum(Number(x.toPrecision(6)));read.append(xl);
+    const show=(dot,v,k,at)=>{const ok=isFinite(v)&&v>=y0&&v<=y1;dot.style.display=ok?"":"none";if(ok){dot.setAttribute("cx",sx(at));dot.setAttribute("cy",sy(v))}const s=document.createElement("span");s.className="pl-val "+k;s.textContent=isFinite(v)?Calc.format(Number(v.toPrecision(5))):"no value";read.append(s)};
+    series.forEach((s,i)=>{const at=s.seq?Math.round(x):x;show(dots[i],s.seq&&(at<ns[0]||at>ns[ns.length-1])?NaN:s.fn(at),s.k,at)});
+    if(own)show(ownDot,own(x),"pl-own",x);else ownDot.style.display="none";
+  };
+  svg.addEventListener("pointerdown",move);svg.addEventListener("pointermove",move);
+  svg.addEventListener("pointerleave",()=>{cur.style.display="none";read.textContent=hint});
+  // One more formula of your own, drawn into the same picture.
+  if(!onlySeq){
+    const w=document.createElement("label");w.className="pl-try";w.innerHTML='<span>Try your own: y =</span><input type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="for example x^2 - 2x"><span class="note"></span>';
+    const inp=w.querySelector("input"),msg=w.querySelector(".note");
+    inp.oninput=()=>{const t=inp.value.trim();own=t?Calc.compile(t,"x"):null;ownPath.setAttribute("d",own?path(xs.map(own)):"");msg.textContent=t&&!own?"I can't read that yet. Use x, + - * / ^, brackets, sqrt(), ln(), exp(), sin().":""};
+    fig.append(w);
+  }
+  return fig;
 }
 /* ---------------- Lesson layout: numbered sections and coloured boxes ---------------- */
 // A lesson is Markdown. A quote block that opens with a tag becomes a box:
@@ -126,15 +245,16 @@ function renderMD(src,el,typeset=true){
 //   > [!warning]                    warning, mistake           (red)
 //   > [!intuition]                  intuition, tip             (violet)
 //   > [!why]                        why it matters             (teal)
+//   > [!use]                        where it is needed in real life (orange)
 //   > [!remember]                   remember                   (amber, framed)
 //   > [!notation]                   a sign and how to read it  (grey)
 // Lessons written before the tags existed are boxed by their headings ("Common mistakes", "Example", ...).
-const BOXES={rule:["rule","Rule"],definition:["rule","Definition"],formula:["rule","Formula"],example:["example","Worked example"],warning:["warning","Watch out"],mistake:["warning","Watch out"],intuition:["intuition","The idea"],tip:["intuition","Tip"],why:["why","Why it matters"],remember:["remember","Remember"],notation:["notation","New notation"]};
+const BOXES={rule:["rule","Rule"],definition:["rule","Definition"],formula:["rule","Formula"],example:["example","Worked example"],warning:["warning","Watch out"],mistake:["warning","Watch out"],intuition:["intuition","The idea"],tip:["intuition","Tip"],why:["why","Why it matters"],use:["use","In real life"],remember:["remember","Remember"],notation:["notation","New notation"]};
 function lessonBox(type,title){
   const d=document.createElement("div"),h=document.createElement("div"),b=document.createElement("b"),s=document.createElement("span");
   d.className="box box-"+BOXES[type][0];h.className="box-h";b.textContent=BOXES[type][1];s.textContent=title||"";h.append(b,s);d.append(h);return d;
 }
-const boxKind=t=>/mistake|trap|pitfall|watch out|careful/i.test(t)?"warning":/example/i.test(t)?"example":/why (this|it) matters|matters for|quantitative finance|quant finance/i.test(t)?"why":/remember|recap|summary|takeaway|key (facts|results|points)/i.test(t)?"remember":/intuition|the idea|big picture/i.test(t)?"intuition":/\b(definitions?|rules?|formulas?|theorem|identit\w+|laws?|notation)\b|sums to know/i.test(t)?"rule":"";
+const boxKind=t=>/mistake|trap|pitfall|watch out|careful/i.test(t)?"warning":/real life|real world|in practice|where you (meet|need|use)/i.test(t)?"use":/example/i.test(t)?"example":/why (this|it) matters|matters for|quantitative finance|quant finance/i.test(t)?"why":/remember|recap|summary|takeaway|key (facts|results|points)/i.test(t)?"remember":/intuition|the idea|big picture/i.test(t)?"intuition":/\b(definitions?|rules?|formulas?|theorem|identit\w+|laws?|notation)\b|sums to know/i.test(t)?"rule":"";
 function renderLesson(src,el){
   renderMD(src,el,false);
   // 1) Tagged quote blocks.
@@ -176,7 +296,7 @@ function renderLesson(src,el){
 function notationBoxes(el){
   const known=S.known||{},seen=new Set(),at=new Map();
   el.querySelectorAll("p,li,td,th").forEach(node=>{
-    if(node.closest(".box-h,.box-notation"))return;
+    if(node.closest(".box-h,.box-notation,.plot"))return;
     const tex=(node.textContent.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g)||[]).join(" ");if(!tex)return;
     SYMS.forEach((s,i)=>{
       if(seen.has(i)||known[s[0]]||!s[3]||!s[3].test(tex))return;
@@ -297,6 +417,8 @@ async function storeLesson(id,obj){
   MEM[id]=obj;lsSet("qpr-lesson-"+id,JSON.stringify(obj));
   if(COL){try{await COL.doc("lesson-"+id).set(obj)}catch(e){}}
 }
+// How to write a graph, for every prompt that produces lesson text.
+const PLOT_HELP="- GRAPHS. The page draws a graph from a fenced code block with the language plot, and the student understands a topic far better when they see it. So whenever something can be drawn (a function, how a formula reacts when one number in it changes, a sequence or the terms of a sum, a probability distribution, an area, a payoff), draw it: at least one graph in every mathematical lesson, two to four when the topic is about functions, limits, derivatives, integrals or distributions. Put the block on its own, outside the boxes, directly after the paragraph or box it illustrates, and say in one sentence before it what to look at in the picture. One instruction per line, for example:\n```plot\ntitle: A power grows faster the larger its base\nf: 2^x | $2^x$\nf: 3^x | $3^x$\nx: -2..3\npoint: 0, 1 | both pass through (0, 1)\n```\n  * f: a formula in x, up to five per graph, each with a label after ' | '. Write the formula the way a calculator takes it: + - * / ^, brackets, sqrt(x), abs(x), ln(x), exp(x), sin(x), cos(x), tan(x), pi, e. No LaTeX in the formula; LaTeX in $...$ is fine in the label. There is no max or min: write max(x-100, 0) as (abs(x-100)+x-100)/2.\n  * seq: a formula in n, drawn as dots at the whole numbers n: a sequence, the terms of a sum, the probabilities of a discrete distribution (ncr(10,n) is 'n out of 10'). Give its range as n: a..b.\n  * x: a..b is the range shown. y: a..b only when the automatic range would hide the point of the picture.\n  * point: x, y | label marks a point. vline: x | label and hline: y | label draw dashed guide lines (an asymptote, a limit, a mean, a solution). shade: a..b fills the area between the first curve and the x-axis (an integral, a probability).\n  * title:, xlabel:, ylabel: in plain words. Name real quantities where there are some (years, CHF, share price).\n  * A graph may also stand inside a worked answer (A:) when the picture is the quickest explanation.";
 function lessonPrompt(L){
   const wk=WEEKS[L.w-1];
   const ctx="The student is preparing for the admission interview of the MSc Quantitative Finance jointly offered by UZH and ETH Zurich. Background: one university business-math course at WU Vienna, otherwise a beginner. They study about 45–60 minutes a day.";
@@ -305,7 +427,7 @@ function lessonPrompt(L){
   const topic=L.review
     ? "Today is a REVIEW day for week "+L.w+" ("+wk[0]+"). The week covered: "+wk[1].join("; ")+". Write a short recap of the key results (formulas, definitions, one-line intuition each), then 10 mixed practice problems across the week, at least one for every day's topic, in shuffled order, not grouped by topic."+mix
     : "Today's lesson: week "+L.w+" of 52 ("+L.phase+" phase, week theme: "+wk[0]+"). Topic: "+L.title+". Earlier this week: "+wk[1].slice(0,L.d-1).join("; ")+(L.d>1?".":"(this is the first day).")+" Write a self-contained lesson of about 45 minutes: start with intuition in plain language, then the precise definitions/statements (state the sets variables live in), then at least two fully worked examples step by step, a short 'common mistakes' list, and a closing paragraph on why it matters for quantitative finance or the interview. The student finds mathematical notation hard to read: directly below every displayed formula add a line in italics starting with 'In words:' that reads the formula aloud in plain English, and the first time any symbol appears (for example a capital sigma for sums, the element-of sign, the integral sign, a prime for derivatives) name the symbol and say how it is pronounced. Then 8 practice problems, ordered from easy to hard. Every rule or definition of the lesson is practised at least twice: once directly, and once in a harder or less obvious form, with different numbers and a different surface each time. The FIRST problem is shown before the lesson as a try-first question, so it must be approachable with intuition alone. Problem 6 combines today's topic with something from earlier in the course, problem 7 is a multi-step problem, and problem 8 is an interview-style 'explain why' question.";
-  return ctx+"\n\n"+topic+"\n\nIf the topic is not mathematical (for example application documents or interview practice), give concrete practical guidance and exercises instead, using what is known about this program: application 15 Nov–15 Jan, CHF 200 fee, CV and course summary on the program's templates, 1-page motivation letter, two referees, a 20-minute Zoom interview in March with a math part (calculus, linear algebra, probability and statistics) and a finance/economics part.\n\nFORMAT, follow exactly:\n- Markdown only, no HTML. Use ## and ### headings.\n- Math in LaTeX: inline as $...$ and display as $$...$$ on its own lines. Never use \\( \\) or \\[ \\]. Never use the dollar sign for money; write CHF or USD.\n- LAYOUT of the lesson (not the practice part). The page shows it as numbered sections with coloured boxes, so write it to be scanned, never as one long block of text:\n  * Open with one short paragraph: what today is about and why, in plain words.\n  * Then 3 to 6 sections, each starting with a ## heading that names its idea. At most 3 short paragraphs of running text per section; everything else goes into boxes.\n  * A box is a quote block whose first line is a tag and a short title, followed by an empty quote line, then the content. EVERY line of a box starts with '> ', including empty lines, list items and formulas. Inside a box a display formula sits on ONE line: > $$...$$\n  * The tags: [!intuition] the idea in everyday words or a picture, before any formula. [!rule] every definition, theorem or formula worth knowing, stated precisely with the sets the variables live in, followed by its 'In words:' line. [!example] a worked example, as numbered steps with one move per step and the reason for it. [!warning] a common mistake, shown as the wrong step, why it is wrong, and the right step. [!why] what it is used for in quantitative finance or in the interview. [!remember] the things to remember. [!notation] a sign or way of writing that is new in this lesson and is NOT one of the standard signs (the page itself explains sums, products, factorials, set signs, quantifiers, arrows, limits, derivatives, integrals and the usual probability signs where they first appear): put the box directly before the first formula that uses it and give the sign, how to say it aloud, what it means, and one tiny example.\n  * Every lesson has at least: one [!intuition], two [!rule], two [!example], one [!warning] and one [!why]. It ENDS with one box '> [!remember] Things to remember' holding 3 to 5 bullet points, each one fact or formula the student should be able to write down from memory tomorrow.\n  * Example of a box:\n> [!rule] Product rule for powers\n>\n> For $a>0$ and real numbers $x, y$:\n>\n> $$a^x a^y=a^{x+y}$$\n>\n> *In words: to multiply two powers of the same base, add the exponents.*\n- After the lesson, a line containing only ===PRACTICE===\n- Then each problem as a block starting with a line 'Q:' followed by the question, then a line 'A:' followed by a complete worked answer. Separate blocks with a line containing only ---\n- Do not use --- anywhere else.";
+  return ctx+"\n\n"+topic+"\n\nIf the topic is not mathematical (for example application documents or interview practice), give concrete practical guidance and exercises instead, using what is known about this program: application 15 Nov–15 Jan, CHF 200 fee, CV and course summary on the program's templates, 1-page motivation letter, two referees, a 20-minute Zoom interview in March with a math part (calculus, linear algebra, probability and statistics) and a finance/economics part.\n\nFORMAT, follow exactly:\n- Markdown only, no HTML. Use ## and ### headings.\n- Math in LaTeX: inline as $...$ and display as $$...$$ on its own lines. Never use \\( \\) or \\[ \\]. Never use the dollar sign for money; write CHF or USD.\n- LAYOUT of the lesson (not the practice part). The page shows it as numbered sections with coloured boxes, so write it to be scanned, never as one long block of text:\n  * Open with one short paragraph: what today is about and why, in plain words.\n  * Then 3 to 6 sections, each starting with a ## heading that names its idea. At most 3 short paragraphs of running text per section; everything else goes into boxes.\n  * A box is a quote block whose first line is a tag and a short title, followed by an empty quote line, then the content. EVERY line of a box starts with '> ', including empty lines, list items and formulas. Inside a box a display formula sits on ONE line: > $$...$$\n  * The tags: [!intuition] the idea in everyday words or a picture, before any formula. [!rule] every definition, theorem or formula worth knowing, stated precisely with the sets the variables live in, followed by its 'In words:' line. [!example] a worked example, as numbered steps with one move per step and the reason for it. [!warning] a common mistake, shown as the wrong step, why it is wrong, and the right step. [!why] what it is used for in quantitative finance or in the interview. [!use] where this turns up outside the classroom: two to four concrete situations as bullet points, each starting in bold with who needs it and when (someone comparing two mortgage offers, a shop owner, an engineer, a doctor, a trader pricing an option), followed by the actual small calculation with realistic numbers, so the student sees the tool doing a job. At least one situation from everyday life or another field and at least one from finance. This is not the same as [!why], which says where the topic leads in the course and the interview. [!remember] the things to remember. [!notation] a sign or way of writing that is new in this lesson and is NOT one of the standard signs (the page itself explains sums, products, factorials, set signs, quantifiers, arrows, limits, derivatives, integrals and the usual probability signs where they first appear): put the box directly before the first formula that uses it and give the sign, how to say it aloud, what it means, and one tiny example.\n  * Every lesson has at least: one [!intuition], two [!rule], two [!example], one [!warning], one [!why] and one [!use]. It ENDS with one box '> [!remember] Things to remember' holding 3 to 5 bullet points, each one fact or formula the student should be able to write down from memory tomorrow.\n  * Example of a box:\n> [!rule] Product rule for powers\n>\n> For $a>0$ and real numbers $x, y$:\n>\n> $$a^x a^y=a^{x+y}$$\n>\n> *In words: to multiply two powers of the same base, add the exponents.*\n"+PLOT_HELP+"\n- After the lesson, a line containing only ===PRACTICE===\n- Then each problem as a block starting with a line 'Q:' followed by the question, then a line 'A:' followed by a complete worked answer. Separate blocks with a line containing only ---\n- Do not use --- anywhere else.";
 }
 function parseLesson(text){
   const parts=text.split(/^\s*===\s*PRACTICE\s*===\s*$/m);
@@ -1336,7 +1458,9 @@ function showContent(L,c,fresh){
   renderLesson(c.md,body);
   lessonVideo(L,body);
   const tag=document.createElement("div");tag.className="eyebrow step";tag.style.marginBottom="6px";tag.textContent="Step 2 of 4 · Lesson";body.prepend(tag);
-  if(!HAND[L.id]&&SAMPLE){const r=document.createElement("p");r.className="note";r.innerHTML='Written for you by Claude. <button class="btn" id="regen" style="margin-left:6px;padding:3px 9px;font-size:12.5px">Rewrite this lesson</button>';tag.after(r);document.getElementById("regen").onclick=()=>generate(L,true)}
+  if(!HAND[L.id]&&SAMPLE){const r=document.createElement("p");r.className="note";r.innerHTML='Written for you by Claude. <button class="btn" id="regen" style="margin-left:6px;padding:3px 9px;font-size:12.5px">Rewrite this lesson</button>';tag.after(r);document.getElementById("regen").onclick=()=>generate(L,true);
+    // A lesson written before graphs and "In real life" boxes existed can get them added, without touching its problems.
+    if(!/\[!use\]|```plot|~~~plot/.test(c.md)){const b=document.createElement("button");b.type="button";b.className="btn";b.style.cssText="margin-left:6px;padding:3px 9px;font-size:12.5px";b.textContent="Add graphs and real-life uses";r.append(b);b.onclick=()=>enrich(L,b)}}
   if(SAMPLE){const w=document.createElement("div");w.style.margin="4px 0 8px";w.innerHTML='<button type="button" class="btn sm" id="talk">Talk me through this lesson</button><span class="note" style="margin-left:8px">Tap any formula to see how to read it in words. All signs are listed under <a href="#symbols">Symbols</a>.</span><div id="talkBox"></div>';tag.after(w);
     document.getElementById("talk").onclick=e=>walkFor("The main ideas of this lesson ("+L.title+"):\n<<<\n"+String(c.md).slice(0,6000)+"\n>>>",document.getElementById("talkBox"),e.currentTarget,"5 to 8")}
   // Step 3: explain it back (self-explanation, from memory).
@@ -1379,6 +1503,22 @@ function showContent(L,c,fresh){
   const t=TRIED[L.id];
   if(t&&typeof t==="object"&&its[0]&&!(ANS[L.id]&&ANS[L.id].b.p0)){const ab=its[0].ab;if(t.mode==="ink"&&t.strokes&&t.strokes.length){ab.set("ink");ab.ink.load(t.strokes)}else if(t.text){ab.set("text");ab.ta.value=t.text}ab.changed()}
   typesetNow(body);
+}
+// Adds graphs and an "In real life" box to a lesson that has none. The lesson text and its problems stay as they
+// are; the new part goes in just before the closing "Things to remember" box.
+async function enrich(L,btn){
+  const base=await loadBase(L.id);if(!base||HAND[L.id])return;
+  btn.disabled=true;btn.textContent="Drawing…";
+  try{
+    const {text}=await SAMPLE("You are extending a lesson for a beginner preparing for the UZH/ETH MSc Quantitative Finance admission interview. They understand a topic best when they see it as a picture and know what it is used for.\n\nThe lesson ("+L.title+"):\n<<<\n"+String(base.md).slice(0,9000)+"\n>>>\n\nWrite ONE new section to be added at the end of this lesson, and nothing else:\n1. A heading: ## See it, and where you need it\n2. Two to four graphs that show the lesson's main ideas. Before each graph, one or two sentences that say what to look at and what it shows.\n3. One box that starts with the line '> [!use] ' followed by a short title, then an empty quote line ('>'), then two to four bullet points (every line starts with '> '). Each bullet starts in bold with who needs this and when, followed by the actual small calculation with realistic numbers. At least one situation from everyday life or another field, and at least one from finance.\n\nFORMAT:\n- Markdown only, no HTML. Math in LaTeX: inline as $...$ and display as $$...$$. Never use the dollar sign for money; write CHF or USD.\n"+PLOT_HELP,{cache:false});
+    const add=String(text||"").trim().replace(/^```(?:markdown|md)\s*\n([\s\S]*)\n```\s*$/,"$1");
+    if(!/```plot|\[!use\]/.test(add))throw{code:"empty_completion"};
+    const md=String(base.md),at=md.lastIndexOf("> [!remember]");
+    const obj=Object.assign({},base,{md:at>0?md.slice(0,at)+add+"\n\n"+md.slice(at):md+"\n\n"+add});
+    await storeLesson(L.id,obj);
+    if(CUR!==L)return;
+    const y=window.scrollY;showContent(L,await loadLesson(L.id));window.scrollTo(0,y);
+  }catch(e){btn.disabled=false;btn.textContent="Add graphs and real-life uses";const n=document.createElement("span");n.className="note";n.style.marginLeft="8px";n.textContent=errText(e)||"That did not work. Try again.";btn.after(n)}
 }
 async function explainCheck(L,c,btn,ab){
   const useInk=ab.mode==="ink"&&ab.hasInk(),mine=ab.text(),fb=document.getElementById("exFb");
