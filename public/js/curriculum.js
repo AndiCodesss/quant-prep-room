@@ -360,13 +360,27 @@ practice:[
 
 /* ---------------- Short videos ---------------- */
 // One YouTube explanation under five minutes per lesson: [video id, title, channel, length in seconds].
-// Length and embedding were checked on 25 Nov 2026. A lesson without an entry asks for a link instead.
+// Weeks 1 to 4. Length and embedding were checked on 25 Nov 2026. A lesson without an entry asks for a link instead.
 const VIDEOS={
  w1d1:{id:"aiTRQzVHAVE",title:"Laws of Exponents Explained with Examples",by:"Rashi Goel",sec:115},
  w1d2:{id:"daUlTsnCNRQ",title:"Natural Logarithms",by:"The Organic Chemistry Tutor",sec:169},
  w1d3:{id:"OmxdT5RzMq0",title:"Quadratic Formula: When to Use?",by:"Mario's Math Tutoring",sec:200},
  w1d4:{id:"IEzlvswCdn4",title:"Domain, Codomain and Notation of a Function",by:"Math Stuff",sec:268},
- w1d5:{id:"bjiDMt1X7oQ",title:"Introduction to Basic Statistical Notation: Sigma and Summation",by:"Jason Popan",sec:207}
+ w1d5:{id:"bjiDMt1X7oQ",title:"Introduction to Basic Statistical Notation: Sigma and Summation",by:"Jason Popan",sec:207},
+ w2d1:{id:"lZuwL-AvEsc",title:"Set Notation(s)",by:"Steve Stein",sec:156},
+ w2d2:{id:"6GisBl2PE84",title:"Big Conjunctions, Big Disjunctions and Quantifiers",by:"FREGE: A Logic Course",sec:229},
+ w2d3:{id:"2FlMkP7jqQo",title:"Proof: Square Root of 2 is Irrational",by:"Wrath of Math",sec:241},
+ w2d4:{id:"B2Qp3efqn0g",title:"What is Mathematical Induction?",by:"Karen Strader",sec:164},
+ w2d5:{id:"BOzT6viUGyM",title:"Factorials and combinations",by:"Whiteboard Maths",sec:289},
+ w3d1:{id:"0xbQNShjqqY",title:"Polynomials and the Factor Theorem",by:"Andrew Misseldine",sec:181},
+ w3d2:{id:"esP-OiELrzM",title:"Graphing exponential functions and inverses",by:"Naomi Anderegg",sec:194},
+ w3d3:{id:"pwo0dDf2Z7w",title:"Using the Unit Circle for Sine and Cosine",by:"Math with Dr. Claire",sec:205},
+ w3d4:{id:"H4-ajAtbdd0",title:"Functions, Composite Functions and Inverses",by:"mathsquared",sec:288},
+ w3d5:{id:"11WRjGhcnYc",title:"Solve Basic Absolute Value Equations (Graph and Interval Notation)",by:"Mathispower4u",sec:288},
+ w4d1:{id:"RSGlurzBbYY",title:"Convergence of Sequences Explained",by:"Sciwords",sec:226},
+ w4d2:{id:"ikXZLVxy8dM",title:"Comparing Sequences",by:"OpenStax",sec:129},
+ w4d3:{id:"4baQj2-BZHM",title:"Sum of a Geometric Progression: Derivation of the Formula",by:"MathsSmart",sec:290},
+ w4d4:{id:"jDTCKoPFFqc",title:"Pascal's Triangle Explained: An Easy Way to Expand (a + b)^n",by:"Classroom with Mr Precious",sec:263}
 };
 
 /* ---------------- Interview set (self-assessment topics) ---------------- */
