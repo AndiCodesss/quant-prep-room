@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config, assertConfig } from "./config.mjs";
 import { isAuthed, login, clearedCookie } from "./auth.mjs";
-import { readDoc, writeDoc, MAX_DOC_BYTES } from "./store.mjs";
+import { readDoc, writeDoc, startBackups, MAX_DOC_BYTES } from "./store.mjs";
 import { streamClaude, transport } from "./claude.mjs";
 import * as voice from "./voice.mjs";
 
@@ -156,12 +156,20 @@ async function api(req, res, pathname) {
 
   const doc = /^\/api\/store\/([^/]+)$/.exec(pathname);
   if (doc && method === "GET") {
-    const data = await readDoc(doc[1]);
-    return sendJson(res, 200, { exists: data !== null, data });
+    const found = await readDoc(doc[1]);
+    return sendJson(res, 200, { exists: found !== null, data: found ? found.data : null, version: found ? found.version : "" });
   }
   if (doc && method === "PUT") {
-    await writeDoc(doc[1], await readBody(req, MAX_DOC_BYTES));
-    return sendJson(res, 200, { ok: true });
+    // X-If-Version: save only if the document is still the version this browser last saw; otherwise hand back
+    // what is there now, so the browser can merge and try again instead of overwriting another device's work.
+    const seen = req.headers["x-if-version"];
+    try {
+      const version = await writeDoc(doc[1], await readBody(req, MAX_DOC_BYTES), seen === undefined ? undefined : String(seen));
+      return sendJson(res, 200, { ok: true, version });
+    } catch (e) {
+      if (e.status === 409) return sendJson(res, 409, { error: "conflict", ...e.current });
+      throw e;
+    }
   }
 
   if (pathname === "/api/voice/status" && method === "GET") return sendJson(res, 200, voice.status());
@@ -203,6 +211,7 @@ server.on("upgrade", (req, socket, head) => {
   socket.destroy();
 });
 
+startBackups();
 server.listen(config.port, config.host, () => {
   console.log(new Date().toISOString(), `Quant Prep Room on http://${config.host}:${config.port} · Claude via ${transport()} · natural voice ${voice.enabled() ? "available" : "not configured"}`);
 });

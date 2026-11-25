@@ -13,12 +13,12 @@ import { config } from "./config.mjs";
 import { tokenMatches } from "./auth.mjs";
 
 const SAMPLE_RATE = 24000;
-const START_TIMEOUT_MS = 10 * 60e3;
+const START_TIMEOUT_MS = 14 * 60e3;
 const workerConfigFile = path.join(config.dataDir, "voice-worker.json");
 
 let state = "off"; // off | starting | ready | stopping
 let worker = null, workerInfo = null, launcher = null;
-let lastError = "", startedAt = 0, lastUsed = 0, startTimer = null;
+let lastError = "", startedAt = 0, lastUsed = 0, startTimer = null, retryTimer = null;
 let nextJob = 1;
 const jobs = new Map(); // id -> {onAudio, onEnd}
 
@@ -43,13 +43,13 @@ function setState(next, error = "") {
   if (state !== next) log(state, "->", next, error);
   state = next;
   lastError = error;
-  if (next !== "starting") { clearTimeout(startTimer); startTimer = null; }
+  if (next !== "starting") { clearTimeout(startTimer); startTimer = null; clearTimeout(retryTimer); retryTimer = null; }
 }
 
-// Detached: a restart of this server must not orphan a GPU session half-way through its own shutdown.
-// The scripts write their own log (data/logs/voice-launch.log).
+// The scripts must outlive a restart of this server. On Windows a child does that anyway, and asking for a
+// detached one would open a console window (the WSL terminal popping up); elsewhere it has to be detached.
 function runShell(cmd) {
-  return spawn(cmd, { shell: true, detached: true, windowsHide: true, stdio: "ignore", cwd: config.dataDir });
+  return spawn(cmd, { shell: true, detached: process.platform !== "win32", windowsHide: true, stdio: "ignore", cwd: config.dataDir });
 }
 
 export function start() {
@@ -65,17 +65,27 @@ export function start() {
   }));
   setState("starting");
   startedAt = Date.now();
-  launcher = runShell(config.voice.launchCmd);
-  const mine = launcher;
-  launcher.on("exit", (code) => {
-    if (launcher !== mine) return;
-    launcher = null;
-    if (state === "starting") setState("off", `The GPU session ended before the voice was ready (exit ${code}). See data/logs/voice-launch.log.`);
-    else if (state === "stopping") setState("off");
-  });
-  launcher.on("error", (e) => { if (launcher === mine) { launcher = null; setState("off", e.message); } });
+  launch(1);
   startTimer = setTimeout(() => { if (state === "starting") stop("The GPU session took too long to start."); }, START_TIMEOUT_MS);
   return status();
+}
+
+// The launcher gives up when Colab has no GPU to hand out, which is common for a few minutes right after one
+// was released. So a launcher that fails while we are still starting is run again, a little later, a few times.
+const LAUNCH_ROUNDS = 3, LAUNCH_PAUSE_MS = 60e3;
+function launch(round) {
+  const mine = launcher = runShell(config.voice.launchCmd);
+  mine.on("exit", (code) => {
+    if (launcher !== mine) return;
+    launcher = null;
+    if (state === "stopping") return setState("off");
+    if (state !== "starting") return;
+    if (round < LAUNCH_ROUNDS) {
+      log(`launcher ended (exit ${code}) before the voice was ready; trying again in a minute (round ${round + 1} of ${LAUNCH_ROUNDS})`);
+      retryTimer = setTimeout(() => { retryTimer = null; if (state === "starting" && !launcher && !worker) launch(round + 1); }, LAUNCH_PAUSE_MS);
+    } else setState("off", `The GPU session could not be started (exit ${code}). See data/logs/voice-launch.log.`);
+  });
+  mine.on("error", (e) => { if (launcher === mine) { launcher = null; setState("off", e.message); } });
 }
 
 /** Ask the worker to exit and make sure the GPU runtime is released. */

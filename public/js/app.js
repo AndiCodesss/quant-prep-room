@@ -93,7 +93,15 @@ async function save(){
   if(!COL)return;
   if(saving){again=true;return}
   saving=true;
-  try{await COL.doc("progress").set(JSON.parse(JSON.stringify(S)));SYNC="account"}catch(e){SYNC="device"}
+  // Guarded save: if another device (the iPad next to the desktop) saved since this one last looked, take its
+  // progress in first and then save the merged result, so neither loses what it recorded.
+  try{
+    for(let i=0;;i++){
+      try{await COL.doc("progress").set(JSON.parse(JSON.stringify(S)),{guard:true});break}
+      catch(e){if(!(e&&e.code==="conflict")||i>=3)throw e;if(e.data&&e.data.r===RESET){S=mergeState(S,e.data);lsSet(LKEY,JSON.stringify(S));updateStats()}}
+    }
+    SYNC="account";
+  }catch(e){SYNC="device"}
   saving=false;
   if(again){again=false;save()}
 }
@@ -944,6 +952,7 @@ const CHECK_FMT=String.raw`Reply with only a JSON object of this shape:
    "say": "3-5 short spoken sentences, see the rules below"},
   {"box": [x0, y0, x1, y1], "ok": true}],
  "board": [{"tex": "one line of the perfect written answer, as LaTeX without dollar signs, short enough for one handwritten line; words go in \\text{...}", "say": [{"part": "the exact piece of this line's tex that the sentence is about", "text": "one short spoken sentence about that piece"}]}],
+ "remember": {"name": "the name of the main rule or idea this problem turns on, at most 6 words", "is": "that rule stated in general, one line, formula in $...$", "tip": "the one thing to carry into the next problem like this, one sentence of at most 20 words"},
  "next": {"q": "one similar short question that tests the same rule with different numbers, Markdown, math in $...$", "a": "its answer in one line, math in $...$"} | null}
 Rules:
 - verdict: "correct" = method and final answer are right. "partly" = the method is right but there is a slip, or the answer is unfinished, or one of several parts is wrong. "wrong" = a rule or concept is misapplied, or the answer does not address the question.
@@ -956,6 +965,7 @@ Rules:
 - why: name the misconception plainly, for example "You squared each term separately, as if powers distribute over a sum. They only distribute over products: $(ab)^2=a^2b^2$."
 - check: a concrete test that would have caught THIS error: plug in small numbers (and give the two results, which must really differ), compare with a rough decimal, multiply back, or put the answer into the original. Verify the arithmetic of the check before you write it.
 - board: the book answer exactly as it should be written on the page, following the reference answer, 2 to 6 lines, each following from the one before. The tutor writes it next to the student's work while speaking. Each line's "say" is 1 to 3 sentences, read aloud one after the other while that line is lit up. For every sentence, "part" is the piece of the line it talks about, and the page lights up exactly that piece while the sentence is read: copy it character for character out of this line's "tex", choose a complete sub-expression (a whole exponent, a numerator, one side of the equation, one factor, never half a command and never starting with ^ or _), prefer a piece that occurs only once in the line, and go through the line in the order a tutor would point at it: first what changed from the line above and which rule produced it, then the result. Use "part": "" only for a sentence about the line as a whole. Do not use \\hl.
+- remember: always present, also when the verdict is correct. It is shown in a box of its own after the feedback, so the student sees the rule once more at the end. For a wrong answer it is the rule that was broken; for a correct one, the rule the solution rests on.
 - next: only when a mark has kind "rule". One or two lines of work, same rule, different numbers. null when the verdict is correct or there are only slips.
 - Spoken text: "say", then each ok false mark's "say", then each board line's "say" are read aloud one after the other, like one tutor talking to "you". They must flow together and not repeat each other. No LaTeX and no symbols in spoken text: read the mathematics in words ("one plus r, all squared", "two thirds", "the natural log of a").
 - A mark's "say", in this order: where it is ("in your second line"), the rule by name and in plain words, why your step breaks it, what the step should be, and the quick check if there is one. For a slip: say it is a slip and that the method was right, then give the right number. If later lines carry the error forward, say so in one short sentence.
@@ -1057,11 +1067,14 @@ function renderCheck(r,ab,fb,useInk,auto,ref){
   const nErr=marks.filter(m=>!m.ok).length,nOk=marks.length-nErr;
   const where=!useInk?"":[nErr?nErr+" spot"+(nErr>1?"s":"")+" circled in red":"",nOk?nOk+" ticked green":""].filter(Boolean).join(", ");
   fb.innerHTML=`<p style="margin:0 0 6px"><span class="pill ${v[0]}">${v[1]}</span>${where?` <span class="note">${where} on your page</span>`:""}</p>
-    <div class="read" hidden><div class="note">What I read:</div><div class="prose rd"></div></div><div class="prose sm"></div><ol class="issues${useInk?"":" flat"}"></ol><div class="walk"></div><details class="sol" hidden><summary>Correct solution</summary><div class="prose"></div></details>
+    <div class="read" hidden><div class="note">What I read:</div><div class="prose rd"></div></div><div class="prose sm"></div><ol class="issues${useInk?"":" flat"}"></ol><div class="box box-remember chk-rem" hidden><div class="box-h"><b>Remember</b><span></span></div><div class="prose"></div></div><div class="walk"></div><details class="sol" hidden><summary>Correct solution</summary><div class="prose"></div></details>
     <div class="next" hidden><div class="eyebrow">Try a similar one</div><div class="prose nq"></div><details><summary>Show the answer</summary><div class="prose"></div></details></div>`;
   const read=chkStr(r.read).replace(/\$/g,"").trim();
   if(useInk&&read){const rd=fb.querySelector(".read");rd.hidden=false;renderMD("$$\\begin{array}{l}"+read+"\\end{array}$$",rd.querySelector(".rd"),false)}
   renderMD(chkStr(r.summary),fb.querySelector(".sm"),false);
+  // The rule this problem turns on and the one thing to carry forward, after every check, right or wrong.
+  const rem=r.remember&&typeof r.remember==="object"?{name:chkStr(r.remember.name),is:chkStr(r.remember.is),tip:chkStr(r.remember.tip)}:null;
+  if(rem&&(rem.is||rem.tip)){const d=fb.querySelector(".chk-rem");d.hidden=false;d.querySelector(".box-h span").textContent=rem.name;renderMD([rem.is,rem.tip].filter(Boolean).join("\n\n"),d.querySelector(".prose"),false)}
   const ol=fb.querySelector(".issues");
   const errLines=[];
   // One labelled row of the explanation under the pad: Rule, Why, Correct step, Quick check.
@@ -1795,4 +1808,11 @@ function voiceUI(t){
     try{const b=await COL.doc("drillbank").get();const d=b.exists?b.data():null;if(d&&d.r===RESET){BANK.items=Object.assign({},d.items||{},BANK.items);lsSet(BKEY,JSON.stringify(BANK))}else if(b.exists||Object.keys(BANK.items).length)saveBank()}catch(e){}
     if(changed)route();else updateStats();
   }catch(e){SYNC="device"}
+  // Coming back to a tab that was left open: pick up what another device did in the meantime. The page is not
+  // redrawn (that would wipe what is being written); the numbers update, and the next view shows the rest.
+  document.addEventListener("visibilitychange",async()=>{
+    if(document.hidden||!COL)return;
+    try{const sn=await COL.doc("progress").get(),sd=sn.exists?sn.data():null;if(!sd||sd.r!==RESET)return;
+      const before=JSON.stringify(S);S=mergeState(S,sd);if(JSON.stringify(S)!==before){lsSet(LKEY,JSON.stringify(S));updateStats()}}catch(e){}
+  });
 })();

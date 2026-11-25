@@ -436,3 +436,8 @@ body.login{min-height:100vh;min-height:100dvh;display:grid;place-items:center;pa
 .vid-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
 .vid-form input{flex:1;min-width:200px;font:inherit;font-size:14px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
 @media (max-width:520px){.vid{display:block}.vid-play{width:100%}.vid-meta{margin-top:10px}}
+
+/* "Remember" box under a check's feedback */
+.chk-rem{font-family:var(--f-body);margin:12px 0 4px}
+.chk-rem .prose{font-size:16px}
+.chk-rem .prose p{margin:.25em 0}

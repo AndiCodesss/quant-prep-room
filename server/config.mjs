@@ -18,6 +18,9 @@ export const config = {
   publicUrl: (env.PUBLIC_URL || "").replace(/\/+$/, ""),
   dataDir: path.resolve(ROOT, env.DATA_DIR || "data"),
   publicDir: path.join(ROOT, "public"),
+  // A dated copy of the saved progress is made here once a day. Point it at another disk if you have one.
+  backupDir: path.resolve(ROOT, env.BACKUP_DIR || "data/backups"),
+  backupKeep: num(env.BACKUP_KEEP, 30),
 
   passwordHash: env.APP_PASSWORD_HASH || "",
   sessionSecret: env.SESSION_SECRET || "",

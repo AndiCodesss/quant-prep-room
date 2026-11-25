@@ -18,7 +18,7 @@ It is a self-hosted web app for one person. You write with a stylus on an endles
 - **Training and mock interviews.** Fresh problems on any week or interview topic, as untimed practice or a timed test graded at the end. Anything missed joins the review deck.
 - **A tutor with a natural voice.** Walkthroughs light up formula steps while a voice explains them. The voice is an open text-to-speech model (Kokoro) running on a rented GPU that the app starts when you begin studying and releases when you stop. Until it is up, the device's own voice reads.
 - **Notation in words.** Tap any formula to have it read out in plain English, with each unfamiliar sign named.
-- **Private.** One password, one user. Progress is stored on your own server and follows you from tablet to desktop.
+- **Private.** One password, one user. Progress is stored on your own server and follows you from tablet to desktop: two devices open at once merge what they record, and the store is copied to a dated backup folder every day.
 
 ## How it is put together
 
@@ -76,6 +76,7 @@ Everything is in `.env`; `.env.example` documents each setting.
 | `APP_PASSWORD_HASH`, `SESSION_SECRET` | Written by `npm run setup` / `npm run set-password`. Only a scrypt hash of the password is stored. |
 | `ANTHROPIC_API_KEY` | Optional. Without it the Claude Code CLI is used. |
 | `CLAUDE_MODEL`, `CLAUDE_CHECK_MODEL`, `CLAUDE_QUICK_MODEL` and the matching `..._EFFORT` | Model and effort for each tier: writing lessons, checking work, one-line jobs. |
+| `BACKUP_DIR`, `BACKUP_KEEP` | Where the daily copy of the saved progress goes (default `data/backups`; another disk is better) and how many days to keep (30). |
 | `VOICE_LAUNCH_CMD`, `VOICE_STOP_CMD`, `VOICE_GPU` | How to start and release the GPU voice worker. Leave unset to use the device voice only. |
 | `VOICE_IDLE_MINUTES`, `VOICE_MAX_MINUTES` | When the GPU is released: after this long without speech, and at the latest after this long in total. |
 

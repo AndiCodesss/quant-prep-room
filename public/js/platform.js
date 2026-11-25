@@ -59,10 +59,19 @@ const Platform = (() => {
   sample.limits = async () => ({ images: { max: 4 } });
 
   /* ---------------- Saved documents ---------------- */
+  // Each document comes with a version. set(obj, {guard:true}) saves only if the server still has the version this
+  // browser last saw; if another device saved in between, it throws {code:"conflict", data} with what is there now.
+  const seen = {};
   const store = {
     doc: name => ({
-      async get() { const res = await call("GET", "/api/store/" + name); if (!res.ok) throw { code: "store" }; const j = await res.json(); return { exists: j.exists, data: () => j.data } },
-      async set(obj) { const res = await call("PUT", "/api/store/" + name, obj); if (!res.ok) throw { code: "store" } }
+      async get() { const res = await call("GET", "/api/store/" + name); if (!res.ok) throw { code: "store" }; const j = await res.json(); seen[name] = j.version || ""; return { exists: j.exists, data: () => j.data } },
+      async set(obj, o = {}) {
+        const res = await fetch("/api/store/" + name, { method: "PUT", headers: Object.assign({ "Content-Type": "application/json" }, o.guard ? { "X-If-Version": seen[name] || "" } : {}), body: JSON.stringify(obj) });
+        if (res.status === 401) { toLogin(); throw { code: "session_expired" } }
+        if (res.status === 409) { const j = await res.json(); seen[name] = j.version || ""; throw { code: "conflict", data: j.data } }
+        if (!res.ok) throw { code: "store" };
+        seen[name] = (await res.json()).version || "";
+      }
     })
   };
 
