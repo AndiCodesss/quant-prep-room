@@ -1,0 +1,11 @@
+# Cloudflare Tunnel config. Copy to deploy/tunnel.yml and fill in your tunnel:
+#   cloudflared tunnel create quant-prep-room
+#   cloudflared tunnel route dns quant-prep-room quant.example.com
+tunnel: <tunnel-id>
+credentials-file: /path/to/.cloudflared/<tunnel-id>.json
+
+# 127.0.0.1 rather than "localhost", so cloudflared talks IPv4 to the Node server.
+ingress:
+  - hostname: quant.example.com
+    service: http://127.0.0.1:5190
+  - service: http_status:404

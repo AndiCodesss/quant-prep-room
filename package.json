@@ -1,0 +1,23 @@
+{
+  "name": "quant-prep-room",
+  "version": "1.0.0",
+  "description": "A private study room for a quantitative finance admission interview: a 52-week plan, lessons and problems written by Claude, handwriting checks, spaced review and a natural tutor voice.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "AndiCodesss",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/server.mjs",
+    "dev": "node --watch server/server.mjs",
+    "setup": "node scripts/setup.mjs init",
+    "set-password": "node scripts/setup.mjs password",
+    "test": "node --test tests/calc.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "ws": "^8.23.0"
+  }
+}

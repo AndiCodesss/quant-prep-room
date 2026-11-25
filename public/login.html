@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2445c4">
+<title>Quant Prep Room · Sign in</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login">
+<main class="login-card">
+  <div class="brand"><span class="mark">∫</span>Quant Prep Room</div>
+  <p class="note">This study room is private.</p>
+  <form id="loginForm" autocomplete="on">
+    <input type="text" name="username" value="quant-prep-room" autocomplete="username" hidden>
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button class="btn primary" type="submit">Enter</button>
+    <p class="pill warn" id="loginMsg" role="alert" hidden></p>
+  </form>
+</main>
+<script src="/js/login.js"></script>
+</body>
+</html>
