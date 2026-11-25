@@ -120,7 +120,11 @@ practice:[
  {q:String.raw`Simplify $\dfrac{x^{5}y^{2}}{x^{2}y^{-1}}$.`,a:String.raw`$x^{5-2}y^{2-(-1)}=x^3y^3$.`},
  {q:String.raw`Write $\sqrt{x}\cdot x^{3/2}$ as a single power of $x$.`,a:String.raw`$x^{1/2}\cdot x^{3/2}=x^{2}$.`},
  {q:String.raw`Expand $(1+r)^2$. Why is it not $1+r^2$?`,a:String.raw`$(1+r)^2=1+2r+r^2$. The cross term $2r$ comes from multiplying $1\cdot r$ twice. In finance it is the main effect: two years at rate $r$ gives about $2r$, plus a small interest-on-interest term $r^2$.`},
- {q:String.raw`CHF 1000 is invested at 4% per year for 3 years. What is it worth?`,a:String.raw`$1000\cdot 1.04^3=1124.86$ (CHF, rounded).`}
+ {q:String.raw`CHF 1000 is invested at 4% per year for 3 years. What is it worth?`,a:String.raw`$1000\cdot 1.04^3=1124.86$ (CHF, rounded).`},
+ {q:String.raw`Compute $\frac{5}{6}-\frac{1}{4}$.`,a:String.raw`Common denominator 12: $\frac{10}{12}-\frac{3}{12}=\frac{7}{12}$.`},
+ {q:String.raw`Simplify $\left(\dfrac{2x^2}{y}\right)^3\cdot\dfrac{y^2}{4x^5}$.`,a:String.raw`The power goes onto every factor: $\frac{8x^6}{y^3}\cdot\frac{y^2}{4x^5}=\frac{8}{4}\,x^{6-5}\,y^{2-3}=\frac{2x}{y}$.`},
+ {q:String.raw`Write $\dfrac{1}{\sqrt[3]{x^2}}$ as a single power of $x$. Then evaluate it at $x=8$.`,a:String.raw`$\sqrt[3]{x^2}=x^{2/3}$, so the expression is $x^{-2/3}$. At $x=8$: $8^{-2/3}=\frac{1}{(\sqrt[3]{8})^2}=\frac14$.`},
+ {q:String.raw`Without a calculator: which is larger, $2^{30}$ or $10^{9}$? Explain.`,a:String.raw`$2^{10}=1024>10^3$. Raise both sides to the power 3: $2^{30}=(2^{10})^3>(10^3)^3=10^9$. So $2^{30}$ is larger.`}
 ]},
 "w1d2":{md:String.raw`Logarithms undo powers. They turn multiplication into addition, which is why quants love them: log returns add up over time.
 
@@ -175,7 +179,11 @@ practice:[
  {q:String.raw`Solve $e^{2x}=7$.`,a:String.raw`Take $\ln$: $2x=\ln 7$, so $x=\frac{\ln 7}{2}\approx 0.973$.`},
  {q:String.raw`Simplify $\ln(a^2b)-\ln(ab)$.`,a:String.raw`$2\ln a+\ln b-\ln a-\ln b=\ln a$.`},
  {q:String.raw`With continuous compounding at 7% a year, how long until money doubles?`,a:String.raw`Solve $e^{0.07t}=2$: $t=\frac{\ln 2}{0.07}\approx 9.9$ years.`},
- {q:String.raw`A price goes 100 → 110 → 99. Give the simple and log returns of each step, and the total.`,a:String.raw`Simple: $+10\%$, then $-10\%$; total $-1\%$, which is **not** $10\%-10\%=0$. Log: $\ln 1.1\approx 0.0953$, $\ln 0.9\approx-0.1054$; sum $-0.0101=\ln 0.99$, the total log return. Log returns add.`}
+ {q:String.raw`A price goes 100 → 110 → 99. Give the simple and log returns of each step, and the total.`,a:String.raw`Simple: $+10\%$, then $-10\%$; total $-1\%$, which is **not** $10\%-10\%=0$. Log: $\ln 1.1\approx 0.0953$, $\ln 0.9\approx-0.1054$; sum $-0.0101=\ln 0.99$, the total log return. Log returns add.`},
+ {q:String.raw`Compute $\log_2 32$ and $\log_{10} 0.01$.`,a:String.raw`$\log_2 32=5$ because $2^5=32$. $\log_{10}0.01=-2$ because $10^{-2}=0.01$.`},
+ {q:String.raw`Simplify $e^{2\ln 3-\ln 2}$.`,a:String.raw`$2\ln 3=\ln 9$, so the exponent is $\ln 9-\ln 2=\ln\frac92$. Then $e^{\ln(9/2)}=\frac92$.`},
+ {q:String.raw`Solve $\ln x+\ln(x-1)=\ln 6$.`,a:String.raw`$\ln\big(x(x-1)\big)=\ln 6$, so $x^2-x-6=0$, that is $(x-3)(x+2)=0$. Both logs need $x>1$, so only $x=3$ works.`},
+ {q:String.raw`CHF 500 grows to CHF 800 in 6 years with continuous compounding. What is the yearly rate?`,a:String.raw`$800=500\,e^{6r}$, so $e^{6r}=1.6$ and $r=\frac{\ln 1.6}{6}\approx 0.078$: about 7.8% per year.`}
 ]},
 "w1d3":{md:String.raw`Today is about solving for $x$ — and about the inequality notation that later defines limits.
 
@@ -223,7 +231,11 @@ practice:[
  {q:String.raw`Solve $-2x+4>10$.`,a:String.raw`$-2x>6$, divide by $-2$ and flip: $x<-3$.`},
  {q:String.raw`Write $|x-3|<0.5$ without absolute values.`,a:String.raw`$2.5<x<3.5$.`},
  {q:String.raw`For which $c$ does $x^2+2x+c=0$ have no real solution?`,a:String.raw`$\Delta=4-4c<0 \iff c>1$.`},
- {q:String.raw`Solve $x+2y=8,\ 3x-y=3$.`,a:String.raw`From the second, $y=3x-3$. Then $x+6x-6=8$, so $x=2$, $y=3$.`}
+ {q:String.raw`Solve $x+2y=8,\ 3x-y=3$.`,a:String.raw`From the second, $y=3x-3$. Then $x+6x-6=8$, so $x=2$, $y=3$.`},
+ {q:String.raw`Solve $\dfrac{x+1}{3}=\dfrac{2x-5}{4}$.`,a:String.raw`Multiply both sides by 12: $4(x+1)=3(2x-5)$, so $4x+4=6x-15$ and $x=\frac{19}{2}$.`},
+ {q:String.raw`Solve $x^2-6x+7=0$.`,a:String.raw`$x=\frac{6\pm\sqrt{36-28}}{2}=\frac{6\pm2\sqrt2}{2}=3\pm\sqrt2$.`},
+ {q:String.raw`Solve $|2x-1|\le 5$.`,a:String.raw`$-5\le 2x-1\le 5$. Add 1: $-4\le 2x\le 6$. Divide by 2: $-2\le x\le 3$.`},
+ {q:String.raw`Solve $\dfrac{3-x}{-2}<4$.`,a:String.raw`Multiply by $-2$ and flip the sign: $3-x>-8$. Then $-x>-11$, and multiplying by $-1$ flips again: $x<11$.`}
 ]},
 "w1d4":{md:String.raw`A function is a rule that gives exactly one output for each input. The interview cares about precise notation, so we write the sets too.
 
@@ -265,7 +277,11 @@ practice:[
  {q:String.raw`What is the largest possible domain of $h(x)=\ln(x-2)$?`,a:String.raw`Need $x-2>0$, so $h:(2,\infty)\to\mathbb{R}$.`},
  {q:String.raw`Find the inverse of $f(x)=e^{2x}$, with its domain.`,a:String.raw`$y=e^{2x}\Rightarrow x=\frac{\ln y}{2}$. So $f^{-1}:(0,\infty)\to\mathbb{R}$, $f^{-1}(y)=\frac{\ln y}{2}$.`},
  {q:String.raw`Is $\frac{x}{1+x^2}$ even, odd or neither?`,a:String.raw`$\frac{-x}{1+(-x)^2}=-\frac{x}{1+x^2}$: odd.`},
- {q:String.raw`Slope of the line through $(1,2)$ and $(3,8)$?`,a:String.raw`$m=\frac{8-2}{3-1}=3$.`}
+ {q:String.raw`Slope of the line through $(1,2)$ and $(3,8)$?`,a:String.raw`$m=\frac{8-2}{3-1}=3$.`},
+ {q:String.raw`$f(x)=\dfrac{1}{x-3}$. Give its largest possible domain, and compute $f(f(4))$.`,a:String.raw`The denominator must not be zero: $f:\mathbb{R}\setminus\{3\}\to\mathbb{R}$. $f(4)=1$, and $f(1)=\frac{1}{1-3}=-\frac12$.`},
+ {q:String.raw`Find the inverse of $f(x)=\dfrac{2x+1}{x-1}$ for $x\neq 1$.`,a:String.raw`$y(x-1)=2x+1$, so $xy-2x=y+1$ and $x=\frac{y+1}{y-2}$. So $f^{-1}(y)=\frac{y+1}{y-2}$ for $y\neq 2$.`},
+ {q:String.raw`Is $g(x)=x^2\cdot x^3+x$ even, odd or neither?`,a:String.raw`$g(x)=x^5+x$, and $g(-x)=-x^5-x=-g(x)$: odd.`},
+ {q:String.raw`A line has slope $-3$ and passes through $(2,5)$. Give its equation. Where does it cross the $x$-axis?`,a:String.raw`$y=5-3(x-2)=-3x+11$. It crosses the axis where $y=0$: $x=\frac{11}{3}$.`}
 ]},
 "w1d5":{md:String.raw`Expectations, series and the binomial theorem are all written with $\Sigma$. Today you make it your own.
 
@@ -316,7 +332,11 @@ practice:[
  {q:String.raw`Compute $\sum_{k=0}^{4}2^k$ with the formula.`,a:String.raw`$\frac{1-2^5}{1-2}=31$.`},
  {q:String.raw`Compute $\prod_{k=1}^{4}\frac{k+1}{k}$.`,a:String.raw`$\frac21\cdot\frac32\cdot\frac43\cdot\frac54=5$. It telescopes.`},
  {q:String.raw`Rewrite $\sum_{k=2}^{6}k^2$ so the index starts at 0.`,a:String.raw`With $j=k-2$: $\sum_{j=0}^{4}(j+2)^2$.`},
- {q:String.raw`If $|r|<1$, what happens to $\frac{1-r^n}{1-r}$ as $n\to\infty$?`,a:String.raw`$r^n\to0$, so the sum tends to $\frac{1}{1-r}$: the infinite geometric series. You will prove this properly in week 12.`}
+ {q:String.raw`If $|r|<1$, what happens to $\frac{1-r^n}{1-r}$ as $n\to\infty$?`,a:String.raw`$r^n\to0$, so the sum tends to $\frac{1}{1-r}$: the infinite geometric series. You will prove this properly in week 12.`},
+ {q:String.raw`Write $3+6+9+\dots+60$ with a $\Sigma$ and compute it.`,a:String.raw`$\sum_{k=1}^{20}3k=3\cdot\frac{20\cdot21}{2}=630$.`},
+ {q:String.raw`Compute $\sum_{k=1}^{4}k^2$ with the formula, then check by adding the terms.`,a:String.raw`$\frac{4\cdot5\cdot9}{6}=30$, and $1+4+9+16=30$.`},
+ {q:String.raw`Compute $\sum_{k=0}^{9}\left(\frac12\right)^k$.`,a:String.raw`Geometric sum with $r=\frac12$ and 10 terms: $\frac{1-(1/2)^{10}}{1-1/2}=2-\frac{1}{512}=\frac{1023}{512}\approx 1.998$.`},
+ {q:String.raw`A game pays 0 with probability $\frac12$, 10 with probability $\frac14$ and 20 with probability $\frac14$. Compute $E[X]$.`,a:String.raw`$E[X]=0\cdot\frac12+10\cdot\frac14+20\cdot\frac14=7.5$.`}
 ]},
 "w1d6":{md:String.raw`Review day. No new material: work through the mixed set below without looking back, then check. Anything you get wrong, reopen that day's lesson.
 

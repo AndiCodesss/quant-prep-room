@@ -48,12 +48,22 @@ function pickWarmup(n){
   for(let i=pick.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pick[i],pick[j]]=[pick[j],pick[i]]}
   return pick;
 }
-function rateRow(cid,el,after){
-  const c=S.rev[cid],names=["Forgot","Hard","Good","Easy"];
+// The rating row of a problem. A checked answer rates itself (auto: 0 Forgot, 1 Hard, 2 Good), so nothing has to be
+// tapped for the problem to count; the row then shows what was saved and lets you overrule it. Without a check
+// (answer revealed by hand) it asks.
+function rateRow(cid,el,after,auto){
+  const c0=S.rev[cid],names=["Forgot","Hard","Good","Easy"];let told=false;
   el.hidden=false;
-  el.innerHTML='<span class="note">How did it go?</span>'+names.map((t,g)=>`<button class="btn sm" data-g="${g}">${t} <span class="iv">· ${fmtIv(LADDER[nextN(c,g)])}</span></button>`).join("");
-  el.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{rateCard(cid,+b.dataset.g);el.innerHTML=`<span class="note">Saved. It comes back in your warm-up on ${fmtDate(dateOf(S.rev[cid].due))}.</span>`;if(after)after()});
+  const paint=g=>{
+    el.innerHTML=(g==null?'<span class="note">How did it go?</span>':`<span class="note">Saved as <b>${names[g]}</b>: back in your warm-up on ${fmtDate(dateOf(S.rev[cid].due))}. Change it:</span>`)
+      +names.map((t,k)=>`<button class="btn sm${k===g?" on":""}" data-g="${k}">${t} <span class="iv">· ${fmtIv(LADDER[nextN(c0,k)])}</span></button>`).join("");
+    el.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>set(+b.dataset.g));
+  };
+  // Every choice is counted from the card as it was before this visit, so changing your mind never rates it twice.
+  const set=g=>{if(c0)S.rev[cid]=c0;else delete S.rev[cid];rateCard(cid,g);paint(g);if(after&&!told){told=true;after()}};
+  if(auto!=null)set(auto);else paint(null);
 }
+const VERDICT_GRADE={wrong:0,partly:1,correct:2};
 // Closed-book reveal: the first click on an empty attempt only nudges.
 function revealAnswer(btn,ta,fb,ans,onFirst){
   if(ans.hidden&&!ta.has()&&!btn.dataset.nudged){btn.dataset.nudged="1";fb.hidden=false;fb.textContent="Have a go first, even a partial attempt on the pad or on paper. Retrieving it yourself is what makes it stick. Click again to reveal anyway.";return}
@@ -203,7 +213,27 @@ function updateStats(){
 
 /* ---------------- Lesson content (hand-written or generated) ---------------- */
 const MEM={};
+// A lesson is its own text and problems plus any extra problems asked for later ("more problems on this topic").
+// The extras are kept apart from the lesson and added behind its own problems, so the earlier ones keep their numbers
+// and with them their place in the review deck.
+const MORE={};
+async function loadMore(id){
+  if(MORE[id])return MORE[id];
+  let o=null;const raw=lsGet("qpr-more-"+id);if(raw){try{o=JSON.parse(raw)}catch(e){}}
+  if(!(o&&o.r===RESET&&Array.isArray(o.items)))o=null;
+  if(COL){try{const sn=await Promise.race([COL.doc("more-"+id).get(),new Promise((_,r)=>setTimeout(()=>r(0),6000))]);const d=sn.exists?sn.data():null;if(d&&d.r===RESET&&Array.isArray(d.items)&&(!o||d.items.length>o.items.length))o=d}catch(e){}}
+  MORE[id]=o||{r:RESET,items:[]};return MORE[id];
+}
+async function addMore(id,items){
+  const o=await loadMore(id);o.items.push(...items);lsSet("qpr-more-"+id,JSON.stringify(o));
+  if(COL){try{await COL.doc("more-"+id).set(JSON.parse(JSON.stringify(o)))}catch(e){}}
+}
 async function loadLesson(id){
+  const base=await loadBase(id);if(!base)return null;
+  const more=(await loadMore(id)).items;
+  return more.length?Object.assign({},base,{practice:(base.practice||[]).concat(more),own:(base.practice||[]).length}):base;
+}
+async function loadBase(id){
   if(HAND[id])return HAND[id];
   if(MEM[id])return MEM[id];
   if(COL){try{const s=await COL.doc("lesson-"+id).get();if(s.exists){MEM[id]=s.data();return MEM[id]}}catch(e){}}
@@ -220,8 +250,8 @@ function lessonPrompt(L){
   const earlier=WEEKS.slice(Math.max(0,L.w-9),L.w-1).map(x=>x[0]);
   const mix=earlier.length?" Interleave: also include 2 problems on earlier weeks' themes ("+earlier.slice(-4).join("; ")+"), unlabeled and shuffled in with the rest, so the student has to recognise which method applies.":"";
   const topic=L.review
-    ? "Today is a REVIEW day for week "+L.w+" ("+wk[0]+"). The week covered: "+wk[1].join("; ")+". Write a short recap of the key results (formulas, definitions, one-line intuition each), then 7 mixed practice problems across the week, in shuffled order, not grouped by topic."+mix
-    : "Today's lesson: week "+L.w+" of 52 ("+L.phase+" phase, week theme: "+wk[0]+"). Topic: "+L.title+". Earlier this week: "+wk[1].slice(0,L.d-1).join("; ")+(L.d>1?".":"(this is the first day).")+" Write a self-contained lesson of about 45 minutes: start with intuition in plain language, then the precise definitions/statements (state the sets variables live in), then at least two fully worked examples step by step, a short 'common mistakes' list, and a closing paragraph on why it matters for quantitative finance or the interview. The student finds mathematical notation hard to read: directly below every displayed formula add a line in italics starting with 'In words:' that reads the formula aloud in plain English, and the first time any symbol appears (for example a capital sigma for sums, the element-of sign, the integral sign, a prime for derivatives) name the symbol and say how it is pronounced. Then 5 practice problems of increasing difficulty. The FIRST problem is shown before the lesson as a try-first question, so it must be approachable with intuition alone. Make the 4th problem combine today's topic with something from earlier in the course, and the 5th an interview-style 'explain why' question.";
+    ? "Today is a REVIEW day for week "+L.w+" ("+wk[0]+"). The week covered: "+wk[1].join("; ")+". Write a short recap of the key results (formulas, definitions, one-line intuition each), then 10 mixed practice problems across the week, at least one for every day's topic, in shuffled order, not grouped by topic."+mix
+    : "Today's lesson: week "+L.w+" of 52 ("+L.phase+" phase, week theme: "+wk[0]+"). Topic: "+L.title+". Earlier this week: "+wk[1].slice(0,L.d-1).join("; ")+(L.d>1?".":"(this is the first day).")+" Write a self-contained lesson of about 45 minutes: start with intuition in plain language, then the precise definitions/statements (state the sets variables live in), then at least two fully worked examples step by step, a short 'common mistakes' list, and a closing paragraph on why it matters for quantitative finance or the interview. The student finds mathematical notation hard to read: directly below every displayed formula add a line in italics starting with 'In words:' that reads the formula aloud in plain English, and the first time any symbol appears (for example a capital sigma for sums, the element-of sign, the integral sign, a prime for derivatives) name the symbol and say how it is pronounced. Then 8 practice problems, ordered from easy to hard. Every rule or definition of the lesson is practised at least twice: once directly, and once in a harder or less obvious form, with different numbers and a different surface each time. The FIRST problem is shown before the lesson as a try-first question, so it must be approachable with intuition alone. Problem 6 combines today's topic with something from earlier in the course, problem 7 is a multi-step problem, and problem 8 is an interview-style 'explain why' question.";
   return ctx+"\n\n"+topic+"\n\nIf the topic is not mathematical (for example application documents or interview practice), give concrete practical guidance and exercises instead, using what is known about this program: application 15 Nov–15 Jan, CHF 200 fee, CV and course summary on the program's templates, 1-page motivation letter, two referees, a 20-minute Zoom interview in March with a math part (calculus, linear algebra, probability and statistics) and a finance/economics part.\n\nFORMAT, follow exactly:\n- Markdown only, no HTML. Use ## and ### headings.\n- Math in LaTeX: inline as $...$ and display as $$...$$ on its own lines. Never use \\( \\) or \\[ \\]. Never use the dollar sign for money; write CHF or USD.\n- LAYOUT of the lesson (not the practice part). The page shows it as numbered sections with coloured boxes, so write it to be scanned, never as one long block of text:\n  * Open with one short paragraph: what today is about and why, in plain words.\n  * Then 3 to 6 sections, each starting with a ## heading that names its idea. At most 3 short paragraphs of running text per section; everything else goes into boxes.\n  * A box is a quote block whose first line is a tag and a short title, followed by an empty quote line, then the content. EVERY line of a box starts with '> ', including empty lines, list items and formulas. Inside a box a display formula sits on ONE line: > $$...$$\n  * The tags: [!intuition] the idea in everyday words or a picture, before any formula. [!rule] every definition, theorem or formula worth knowing, stated precisely with the sets the variables live in, followed by its 'In words:' line. [!example] a worked example, as numbered steps with one move per step and the reason for it. [!warning] a common mistake, shown as the wrong step, why it is wrong, and the right step. [!why] what it is used for in quantitative finance or in the interview. [!remember] the things to remember. [!notation] a sign or way of writing that is new in this lesson and is NOT one of the standard signs (the page itself explains sums, products, factorials, set signs, quantifiers, arrows, limits, derivatives, integrals and the usual probability signs where they first appear): put the box directly before the first formula that uses it and give the sign, how to say it aloud, what it means, and one tiny example.\n  * Every lesson has at least: one [!intuition], two [!rule], two [!example], one [!warning] and one [!why]. It ENDS with one box '> [!remember] Things to remember' holding 3 to 5 bullet points, each one fact or formula the student should be able to write down from memory tomorrow.\n  * Example of a box:\n> [!rule] Product rule for powers\n>\n> For $a>0$ and real numbers $x, y$:\n>\n> $$a^x a^y=a^{x+y}$$\n>\n> *In words: to multiply two powers of the same base, add the exponents.*\n- After the lesson, a line containing only ===PRACTICE===\n- Then each problem as a block starting with a line 'Q:' followed by the question, then a line 'A:' followed by a complete worked answer. Separate blocks with a line containing only ---\n- Do not use --- anywhere else.";
 }
 function parseLesson(text){
@@ -249,7 +279,10 @@ const PEN_W=[.6,1,1.75],HI_W=[10,16,24],HI_A=.36; // pen: factor on the pressure
 const PEN_X={ink:"#111111",blue:"#1b3fae",red:"#b3261e",green:"#17703a",orange:"#a85400",purple:"#6a2fb0"},HI_X={yellow:"#ffd60a",green:"#5fd17a",pink:"#ff7eb6",blue:"#6fb7ff"},HI_XA=.3;
 const TOOLS={pen:"Pen",hi:"Highlighter",erase:"Eraser",move:"Move the page"};
 const INKPREF="qpr-ink";
-const INK={tool:"pen",prev:"pen",pen:{c:"ink",w:1},hi:{c:"yellow",w:1},opts:true,active:null,pads:new Set()};
+const INK={tool:"pen",prev:"pen",pen:{c:"ink",w:1},hi:{c:"yellow",w:1},opts:true,active:null,hover:null,pads:new Set()};
+// Zoom of a pad: 1 = 100%. The dock buttons and the keyboard walk through the steps; a pinch or Ctrl+wheel lands anywhere in between.
+const ZOOM={min:.4,max:4,steps:[.4,.5,.67,.8,1,1.25,1.5,2,2.5,3,4]};
+const clampZ=z=>Math.max(ZOOM.min,Math.min(ZOOM.max,z));
 // The last tool, and each tool's colour and size, come back after a reload. The eraser does not: a page should never open ready to erase.
 (function(){try{const o=JSON.parse(lsGet(INKPREF)||"null");if(!o)return;
   [["pen",PENS],["hi",HIS]].forEach(([t,set])=>{const q=o[t];if(q&&set.includes(q.c))INK[t].c=q.c;if(q&&[0,1,2].includes(q.w))INK[t].w=q.w});
@@ -271,6 +304,7 @@ const ICO={pen:"M4 20l1.2-4.4L16.6 4.2a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.4 
   move:"M12 3v18M3 12h18M9.4 5.6L12 3l2.6 2.6M9.4 18.4L12 21l2.6-2.6M5.6 9.4L3 12l2.6 2.6M18.4 9.4L21 12l-2.6 2.6",
   undo:"M8.5 13.5L4 9l4.5-4.5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",redo:"M15.5 13.5L20 9l-4.5-4.5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
   clear:"M4 7h16M9.5 7V4.5h5V7M6.2 7l.9 12a2 2 0 0 0 2 1.8h5.8a2 2 0 0 0 2-1.8l.9-12M10 11v6M14 11v6",
+  zout:"M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13zM15.3 15.3L20 20M8 10.5h5",zin:"M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13zM15.3 15.3L20 20M8 10.5h5M10.5 8v5",
   home:"M3.5 11.5L12 4l8.5 7.5M6 9.8V20h12V9.8M10 20v-5.5h4V20",grow:"M12 3.5v17M8 7.5l4-4 4 4M8 16.5l4 4 4-4M5 12h3M16 12h3"};
 const ico=n=>'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="'+ICO[n]+'"/></svg>';
 const dbtn=(attr,n,label,title)=>'<button type="button" '+attr+' aria-label="'+label+'" title="'+(title||label)+'">'+ico(n)+'</button>';
@@ -280,7 +314,9 @@ DOCK.innerHTML='<button type="button" class="grip" data-grip aria-label="Move th
   +'<div class="opts"><div class="opts-in"></div></div><i></i>'
   +'<button type="button" class="calc" data-a="calc" aria-label="Calculate what I just wrote" title="Works out the calculation you just wrote and puts the answer after your equals sign">= Calc</button>'
   +dbtn('data-a="undo"',"undo","Undo","Undo (Ctrl+Z, or tap the page with two fingers)")+dbtn('data-a="redo"',"redo","Redo","Redo (Ctrl+Shift+Z, or tap the page with three fingers)")
-  +dbtn('data-a="clear"',"clear","Clear the page","Clear everything you wrote on this page")+dbtn('data-a="home"',"home","Back to the task and my work")
+  +dbtn('data-a="clear"',"clear","Clear the page","Clear everything you wrote on this page")+dbtn('data-a="home"',"home","Back to the task and my work","Back to the task and my work, at 100%")
+  +dbtn('data-a="zout"',"zout","Zoom out","Zoom out (Ctrl and minus, or pinch two fingers together)")+dbtn('data-a="zin"',"zin","Zoom in","Zoom in (Ctrl and plus, or spread two fingers)")
+  +'<button type="button" class="zpct" data-a="zreset" aria-label="Zoom 100%. Tap for 100%" title="Zoom. Tap to go back to 100% (Ctrl+0)">100%</button>'
   +dbtn('data-a="grow"',"grow","Make the pad taller")+'<button type="button" class="fold" data-fold aria-label="Fold the tools" title="Fold">\u2212</button>';
 document.body.append(DOCK);
 // A short line next to the palette: which tool a gesture switched to, what the calculator read, or why it could not.
@@ -320,7 +356,14 @@ const flipEraser=()=>setTool(INK.tool==="erase"?INK.prev:"erase",true);
 // Grey out what cannot do anything right now, and show the calculator reading.
 function syncDock(){
   const p=inkTarget(),set=(a,off,busy)=>{const b=DOCK.querySelector('[data-a="'+a+'"]');b.classList.toggle("off",!!off);b.setAttribute("aria-disabled",off?"true":"false");if(busy!==undefined){b.classList.toggle("busy",busy);b.setAttribute("aria-busy",busy?"true":"false")}};
-  set("calc",!p||(p.blank&&!p.busy),!!(p&&p.busy));set("undo",!p||!p.undos);set("redo",!p||!p.redos);
+  set("calc",!p||(p.blank&&!p.busy),!!(p&&p.busy));set("undo",!p||!p.undos);set("redo",!p||!p.redos);syncZoom(p);
+}
+// The zoom readout. Folded, it only shows while the pad is not at 100%, so there is always a way back.
+function syncZoom(p){
+  if(p===undefined)p=inkTarget();
+  const z=p?p.zoom:1,t=Math.round(z*100)+"%",b=DOCK.querySelector(".zpct"),off=(a,v)=>{const x=DOCK.querySelector('[data-a="'+a+'"]');x.classList.toggle("off",v);x.setAttribute("aria-disabled",v?"true":"false")};
+  if(b.textContent!==t){b.textContent=t;b.setAttribute("aria-label","Zoom "+t+". Tap for 100%")}
+  b.classList.toggle("z",t!=="100%");off("zout",!p||z<=ZOOM.min*1.001);off("zin",!p||z>=ZOOM.max/1.001);
 }
 function inkTarget(){
   INK.pads.forEach(p=>{if(!p.pad.isConnected)INK.pads.delete(p)});
@@ -346,7 +389,12 @@ document.addEventListener("keydown",e=>{
   if(DOCK.hidden||e.altKey||e.defaultPrevented||e.isComposing)return;
   const el=e.target;if(el&&el.nodeType===1&&(el.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))return;
   const k=String(e.key||"").toLowerCase();
-  if(e.ctrlKey||e.metaKey){if(k!=="z"&&k!=="y")return;const p=inkTarget();if(!p)return;e.preventDefault();p.act(k==="y"||e.shiftKey?"redo":"undo",true);return}
+  if(e.ctrlKey||e.metaKey){
+    // Ctrl/Cmd with + - 0 zooms the pad the mouse is over. Anywhere else the browser keeps its own zoom keys.
+    const zk={"+":"zin","=":"zin","-":"zout","_":"zout","0":"zreset"}[k],h=INK.hover;
+    if(zk){if(h&&h.pad.isConnected&&h.pad.offsetParent){e.preventDefault();h.act(zk)}return}
+    if(k!=="z"&&k!=="y")return;const p=inkTarget();if(!p)return;e.preventDefault();p.act(k==="y"||e.shiftKey?"redo":"undo",true);return;
+  }
   const t={p:"pen",h:"hi",e:"erase",m:"move"}[k];if(t&&!e.shiftKey)setTool(t,true);
 });
 let dockRaf=0;
@@ -403,19 +451,42 @@ function makeInk(host,opts={}){
   let H=opts.height||260,W=0,strokes=[],hist=[],redo=[],cur=null,box=null,lastSize=null,marks=[],pan=null,lastPen=0,panRaf=0,drawRaf=0,busy=false,late=null,tap=null,multi=null;
   const fingers=new Map();
   // Endless page: strokes live in page coordinates, cam is the top-left corner of what the pad shows.
-  const cam={x:0,y:0};
-  function applyCam(){const t="translate("+(-cam.x)+"px,"+(-cam.y)+"px)";mk.style.transform=t;sol.style.transform=t;task.style.transform=t;pad.style.backgroundPosition=(-cam.x)+"px "+(-cam.y)+"px";draw()}
-  function panTo(nx,ny){
-    cancelAnimationFrame(panRaf);const sx=cam.x,sy=cam.y,t0=performance.now(),still=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);
-    const step=t=>{const k=still?1:Math.min(1,Math.max(0,(t-t0)/350)),e=1-Math.pow(1-k,3);cam.x=sx+(nx-sx)*e;cam.y=sy+(ny-sy)*e;applyCam();if(k<1)panRaf=requestAnimationFrame(step)};
+  // cam.z is the zoom (1 = 100%): a page point q is shown at (q - cam) * cam.z pad pixels. Zoom belongs to the pad and is never saved.
+  const cam={x:0,y:0,z:1};
+  let camRaf=0,zGoal=0,zShown=1,solAt={x:0,y:0},taskAt={x:16,y:12};
+  function applyCam(){
+    // The overlays keep their page position (left/top) and are scaled from their own corner, so the shift has to allow for that corner.
+    const z=cam.z,tf=o=>"translate("+((o.x-cam.x)*z-o.x)+"px,"+((o.y-cam.y)*z-o.y)+"px) scale("+z+")";
+    mk.style.transform=tf({x:0,y:0});sol.style.transform=tf(solAt);task.style.transform=tf(taskAt);
+    pad.style.backgroundSize=(28*z)+"px "+(28*z)+"px";pad.style.backgroundPosition=(-cam.x*z)+"px "+(-cam.y*z)+"px";draw();
+    if(z!==zShown){zShown=z;syncZoom()}
+  }
+  // Pinch, wheel and drag only move the camera; the pad is repainted once in the next frame.
+  const camLater=()=>{if(!camRaf)camRaf=requestAnimationFrame(()=>{camRaf=0;applyCam()})};
+  const stopGlide=()=>{cancelAnimationFrame(panRaf);zGoal=0};
+  // Glide to a camera position, and to zoom nz if given. With ax, ay (pad pixels) the page point under that spot stays under it instead.
+  function panTo(nx,ny,nz,ax,ay){
+    stopGlide();const sx=cam.x,sy=cam.y,sz=cam.z,ez=clampZ(nz||sz),fix=ax!=null,px=sx+ax/sz,py=sy+ay/sz,t0=performance.now(),still=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);
+    zGoal=ez;
+    const step=t=>{
+      const k=still?1:Math.min(1,Math.max(0,(t-t0)/350)),e=1-Math.pow(1-k,3);cam.z=k<1?sz*Math.pow(ez/sz,e):ez;
+      if(fix){cam.x=px-ax/cam.z;cam.y=py-ay/cam.z}else{cam.x=sx+(nx-sx)*e;cam.y=sy+(ny-sy)*e}
+      if(k<1)panRaf=requestAnimationFrame(step);else zGoal=0;applyCam();
+    };
     panRaf=requestAnimationFrame(step);
   }
-  // Bring a page rectangle into view, moving as little as possible.
+  // Zoom at once (pinch, wheel), keeping the page point under the pad pixel (ax, ay) where it is.
+  function zoomAt(nz,ax,ay){const px=cam.x+ax/cam.z,py=cam.y+ay/cam.z;cam.z=clampZ(nz);cam.x=px-ax/cam.z;cam.y=py-ay/cam.z;camLater()}
+  // The middle of the part of the pad that is on screen: what the zoom buttons zoom around.
+  function mid(){const r=cv.getBoundingClientRect(),t=Math.max(r.top,0),b=Math.min(r.bottom,window.innerHeight);return{x:W/2,y:b>t?(t+b)/2-r.top:H/2}}
+  // Bring a page rectangle into view, moving as little as possible. Margins are screen pixels, so they look the same at every zoom.
+  // Zoomed in and the rectangle does not fit: zoom out just far enough, at most back to 100%. It never zooms in.
   function ensure(x0,y0,x1,y1){
-    let nx=cam.x,ny=cam.y;
-    if(x1>cam.x+W-8||x0<cam.x+8)nx=(x1-x0<=W-24)?(x0<cam.x+8?x0-12:x1-W+12):x0-12;
-    if(y1>cam.y+H-8||y0<cam.y+8)ny=(y1-y0<=H-24)?(y0<cam.y+8?y0-12:y1-H+12):y0-12;
-    if(nx!==cam.x||ny!==cam.y)panTo(nx,ny);
+    let z=cam.z;if(z>1)z=Math.max(1,Math.min(z,(W-24)/Math.max(1,x1-x0),(H-24)/Math.max(1,y1-y0)));
+    const vw=W/z,vh=H/z,m=8/z,g=12/z;let nx=cam.x,ny=cam.y;
+    if(x1>cam.x+vw-m||x0<cam.x+m)nx=(x1-x0<=vw-2*g)?(x0<cam.x+m?x0-g:x1-vw+g):x0-g;
+    if(y1>cam.y+vh-m||y0<cam.y+m)ny=(y1-y0<=vh-2*g)?(y0<cam.y+m?y0-g:y1-vh+g):y0-g;
+    if(nx!==cam.x||ny!==cam.y||z!==cam.z)panTo(nx,ny,z);
   }
   const changed=()=>{if(opts.onChange)opts.onChange();syncDock()};
   function line(c,s,k,ox,oy,from){
@@ -452,16 +523,18 @@ function makeInk(host,opts={}){
     c.save();c.globalAlpha=x?HI_XA:HI_A;list.forEach(s=>{if(s.t==="hi"){c.strokeStyle=x?HI_X[s.c]||HI_X.yellow:p.hi[s.c]||p.hi.yellow;hiLine(c,s,k,ox,oy)}});c.restore();
     list.forEach(s=>{if(s.t==="hi")return;const col=s.calc?(x?PEN_X.ink:p.accent):x?PEN_X[s.c]||PEN_X.ink:penCol(s);c.strokeStyle=col;c.fillStyle=col;if(s.calc)calcText(c,s,k,ox,oy);else line(c,s,k,ox,oy)});
   }
-  function draw(){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.restore();paint(ctx,strokes,1,cam.x,cam.y)}
+  // Strokes are painted again at the zoom, so they stay sharp at any size.
+  function draw(){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.restore();paint(ctx,strokes,cam.z,cam.x,cam.y)}
   const redraw=()=>{if(!drawRaf)drawRaf=requestAnimationFrame(()=>{drawRaf=0;draw()})};
-  function size(){const w=pad.clientWidth;if(!w)return;W=w;task.style.maxWidth=Math.max(200,Math.min(560,W-32))+"px";const dpr=window.devicePixelRatio||1;pad.style.height=H+"px";cv.style.height=H+"px";cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);draw()}
-  const pt=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left+cam.x,y:e.clientY-r.top+cam.y,p:e.pointerType==="pen"?Math.max(.1,e.pressure||.5):.5}};
+  function size(){const w=pad.clientWidth;if(!w)return;W=w;task.style.maxWidth=Math.max(200,Math.min(560,W-32))+"px";if(!task.hidden)taskAt={x:task.offsetLeft,y:task.offsetTop};const dpr=window.devicePixelRatio||1;pad.style.height=H+"px";cv.style.height=H+"px";cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);applyCam()}
+  const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/cam.z+cam.x,y:(e.clientY-r.top)/cam.z+cam.y,p:e.pointerType==="pen"?Math.max(.1,e.pressure||.5):.5}};
   // Undo steps are earlier versions of the page; a new step empties Redo.
   const keep=a=>{hist.push(a);if(hist.length>80)hist.shift();redo.length=0};
   const snap=()=>keep(strokes.slice());
   // The eraser takes whole strokes (and calculator results). Its undo step is only made once it really removes something.
+  // Its reach is in screen pixels (14 around the tip), so it is as precise zoomed in as it is forgiving zoomed out.
   function eraseAt(p){
-    const left=strokes.filter(s=>{const r=s.t==="hi"?8+(HI_W[s.w]||HI_W[1])/2:14;return !s.pts.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<r)});
+    const left=strokes.filter(s=>{const r=s.t==="hi"?8/cam.z+(HI_W[s.w]||HI_W[1])/2:14/cam.z;return !s.pts.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<r)});
     if(left.length!==strokes.length){if(cur&&cur.erase&&!cur.hit){cur.hit=true;keep(strokes)}strokes=left;draw()}
   }
   function clearMarks(){marks=[];mk.innerHTML=""}
@@ -476,7 +549,7 @@ function makeInk(host,opts={}){
   function setSolution(list){
     clearSol();if(!box||!list.length)return;
     const x=box.x+box.w+48,y=box.y+4;
-    sol.style.left=x+"px";sol.style.top=y+"px";sol.style.maxWidth=Math.max(220,Math.min(480,W-24))+"px";
+    sol.style.left=x+"px";sol.style.top=y+"px";solAt={x,y};applyCam();sol.style.maxWidth=Math.max(220,Math.min(480,W-24))+"px";
     // First one numbered note per red circle (what it should be), then the book answer line by line.
     let headed=false;
     list.forEach(it=>{
@@ -493,7 +566,8 @@ function makeInk(host,opts={}){
     fit();try{if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([sol]).then(fit).catch(()=>{})}catch(e){}
   }
   // Everything is on the page at once; the line the voice is explaining is lit up.
-  function reveal(k){[...sol.querySelectorAll(".sl")].forEach((d,i)=>d.classList.toggle("cur",i===k))}
+  // k: the line being read. j: the piece of that line the sentence is about (see markParts), or none.
+  function reveal(k,j){[...sol.querySelectorAll(".sl")].forEach((d,i)=>{d.classList.toggle("cur",i===k);d.classList.toggle("whole",i===k&&!(j>=0));d.querySelectorAll(".hp").forEach(h=>h.classList.toggle("now",i===k&&j!=null&&j>=0&&h.classList.contains("hp-"+j)))})}
   function revealAll(){reveal(-1)}
   // Gestures. Safari gives a web page no event for the Pencil's own double tap or squeeze, so the nearest thing is done on the glass:
   // two quick taps of the Pencil tip in one spot switch to the eraser and back, and the two dots they left are taken away again.
@@ -503,29 +577,56 @@ function makeInk(host,opts={}){
   const TAP={dur:170,move:4,gap:300,near:6};
   // Two fingers tapped together = Undo, three = Redo. Every finger must land within MT.join ms of the first and stay within MT.move px,
   // and all must lift within MT.dur ms. Nothing happens while the Pencil is down or was down in the last MT.palm ms: that is the hand resting on the glass.
+  // Two fingers that move are a pinch: once either finger has travelled more than MT.move px, or the gap between them has changed by more
+  // than that, the contact can no longer be a tap (so it never fires Undo) and it zooms and drags the page instead. A second finger that
+  // joins a finger already dragging the page, or one that has been resting still, starts a pinch straight away. All of these are screen pixels.
   const MT={join:150,move:12,dur:350,palm:700};
+  const spread=s=>{const f=[...fingers.values()];return f.length===2?Math.hypot(f[0][s+"x"]-f[1][s+"x"],f[0][s+"y"]-f[1][s+"y"]):0};
+  // multi.g: the page point under the fingers' midpoint, their gap and the zoom when the pinch (re)started. Taken again whenever a finger lands or lifts,
+  // so the page never jumps; with one finger left it simply keeps dragging.
+  function grab(){
+    const f=[...fingers.values()],n=f.length;multi.g=null;if(multi.dead||n<1||n>2)return;
+    const r=cv.getBoundingClientRect(),mx=f.reduce((a,q)=>a+q.cx,0)/n-r.left,my=f.reduce((a,q)=>a+q.cy,0)/n-r.top;
+    stopGlide();multi.g={n,px:cam.x+mx/cam.z,py:cam.y+my/cam.z,d:spread("c"),z:cam.z};
+  }
+  function pinch(){
+    const g=multi.g,f=[...fingers.values()],n=f.length;if(!g||n!==g.n)return;
+    const r=cv.getBoundingClientRect(),mx=f.reduce((a,q)=>a+q.cx,0)/n-r.left,my=f.reduce((a,q)=>a+q.cy,0)/n-r.top;
+    if(n===2&&g.d>8)cam.z=clampZ(g.z*spread("c")/g.d);
+    cam.x=g.px-mx/cam.z;cam.y=g.py-my/cam.z;camLater();
+  }
+  function activate(){if(INK.active!==api){INK.active=api;document.querySelectorAll(".ink-pad.act").forEach(x=>x.classList.remove("act"));pad.classList.add("act");syncDock()}}
   // Take back whatever the contact in progress did (a palm, or the first finger of a two-finger tap).
   function dropCur(){if(!cur)return;if(!cur.erase||cur.hit)strokes=hist.pop()||[];cur=null;document.documentElement.classList.remove("inking");draw()}
   function fingerDown(e){
-    const now=Date.now();fingers.forEach((f,id)=>{if(now-f.t>3000)fingers.delete(id)});
-    fingers.set(e.pointerId,{x:e.clientX,y:e.clientY,t:now});
-    if(multi){if(now-multi.t<=MT.join&&fingers.size<=3)multi.n=Math.max(multi.n,fingers.size);else multi.ok=false;return true}
+    // x, y: where the finger landed. cx, cy: where it is now. s: when it was last heard from (a finger whose lift was missed is forgotten).
+    const now=Date.now();fingers.forEach((f,id)=>{if(now-f.s>3000)fingers.delete(id)});
+    fingers.set(e.pointerId,{x:e.clientX,y:e.clientY,cx:e.clientX,cy:e.clientY,t:now,s:now});
+    if(multi){if(now-multi.t<=MT.join&&fingers.size<=3)multi.n=Math.max(multi.n,fingers.size);else multi.ok=false;if(multi.pz)grab();return true}
     if(fingers.size!==2)return false;
-    const first=[...fingers.values()][0];
-    if(now-first.t>MT.join||first.moved||(cur&&cur.type==="pen")||now-lastPen<MT.palm)return false;
+    const [fid,first]=[...fingers.entries()][0];
+    if((cur&&cur.type==="pen")||now-lastPen<MT.palm)return false;
+    if(now-first.t>MT.join||first.moved){
+      // Too late or too far for a tap. A finger already dragging the page, or resting still, plus this one is a pinch;
+      // a finger that is writing carries on and this one is ignored, as before.
+      if(pan&&pan.touch)pan=null; // the page stays where the drag has brought it
+      else if(cur&&cur.id===fid&&!first.moved)dropCur();
+      else return false;
+      multi={n:2,t:first.t,ok:false,pz:true};grab();return true;
+    }
     if(pan){cam.x=pan.cx;cam.y=pan.cy;pan=null;applyCam()}
     dropCur();multi={n:2,t:first.t,ok:true};return true;
   }
   cv.addEventListener("pointerdown",e=>{
-    if(e.pointerType==="pen"){PEN_SEEN=true;lastPen=Date.now();if(multi)multi.ok=false}
+    if(e.pointerType==="pen"){PEN_SEEN=true;lastPen=Date.now();if(multi){multi.ok=false;multi.dead=true;multi.g=null}} // the Pencil ends a pinch: those fingers were the hand
     if(e.button>0)return;
-    if(INK.active!==api){INK.active=api;document.querySelectorAll(".ink-pad.act").forEach(x=>x.classList.remove("act"));pad.classList.add("act");syncDock()}
+    activate();
     if(e.pointerType==="touch"&&fingerDown(e)){e.preventDefault();return}
     if(INK.tool==="move"||(PEN_SEEN&&e.pointerType==="touch")){
       // A finger (or the Move tool) drags the page. Touches right after Pencil ink are the resting palm: ignored.
       if(cur||pan||(INK.tool!=="move"&&Date.now()-lastPen<450))return;
-      e.preventDefault();cancelAnimationFrame(panRaf);try{cv.setPointerCapture(e.pointerId)}catch(_){}
-      pan={id:e.pointerId,x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y};return;
+      e.preventDefault();stopGlide();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+      pan={id:e.pointerId,touch:e.pointerType==="touch",x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y};return;
     }
     if(pan){cam.x=pan.cx;cam.y=pan.cy;pan=null;applyCam()}
     if(cur){
@@ -540,21 +641,27 @@ function makeInk(host,opts={}){
     if(INK.tool==="erase"){cur=Object.assign(g,{erase:true,before:strokes});eraseAt(p);return}
     snap();const hi=INK.tool==="hi",q=INK[hi?"hi":"pen"];
     cur=Object.assign(g,{pts:[p],t:hi?"hi":"pen",c:q.c,w:q.w,before:hist[hist.length-1]});strokes.push(cur);
-    if(hi)draw();else{ctx.fillStyle=penCol(cur);line(ctx,cur,1,cam.x,cam.y)}
+    if(hi)draw();else{ctx.fillStyle=penCol(cur);line(ctx,cur,cam.z,cam.x,cam.y)}
   });
   cv.addEventListener("pointermove",e=>{
     if(e.pointerType==="touch"){
-      const f=fingers.get(e.pointerId);if(f&&!f.moved&&Math.hypot(e.clientX-f.x,e.clientY-f.y)>MT.move){f.moved=true;if(multi)multi.ok=false}
-      if(multi){e.preventDefault();return}
+      const f=fingers.get(e.pointerId);
+      if(f){f.cx=e.clientX;f.cy=e.clientY;f.s=Date.now();if(!f.moved&&Math.hypot(e.clientX-f.x,e.clientY-f.y)>MT.move){f.moved=true;if(multi)multi.ok=false}}
+      if(multi){
+        e.preventDefault();
+        if(multi.ok&&fingers.size===2&&Math.abs(spread("c")-spread(""))>MT.move)multi.ok=false;
+        if(multi.pz)pinch();else if(!multi.ok&&!multi.dead&&multi.n===2&&fingers.size===2){multi.pz=true;grab()}
+        return;
+      }
     }
-    if(pan&&e.pointerId===pan.id){e.preventDefault();cam.x=pan.cx-(e.clientX-pan.x);cam.y=pan.cy-(e.clientY-pan.y);applyCam();return}
+    if(pan&&e.pointerId===pan.id){e.preventDefault();cam.x=pan.cx-(e.clientX-pan.x)/cam.z;cam.y=pan.cy-(e.clientY-pan.y)/cam.z;camLater();return}
     if(!cur||e.pointerId!==cur.id)return;e.preventDefault();
     cur.far=Math.max(cur.far,Math.hypot(e.clientX-cur.x0,e.clientY-cur.y0));
     const evs=(e.getCoalescedEvents&&e.getCoalescedEvents())||[];
     for(const ev of (evs.length?evs:[e])){
       const p=pt(ev);if(cur.erase){eraseAt(p);continue}
-      const last=cur.pts[cur.pts.length-1];if(Math.hypot(p.x-last.x,p.y-last.y)<0.7)continue;
-      cur.pts.push(p);if(cur.t==="hi")redraw();else{ctx.strokeStyle=penCol(cur);line(ctx,cur,1,cam.x,cam.y,cur.pts.length-1)}
+      const last=cur.pts[cur.pts.length-1];if(Math.hypot(p.x-last.x,p.y-last.y)<0.7/cam.z)continue; // 0.7 screen px
+      cur.pts.push(p);if(cur.t==="hi")redraw();else{ctx.strokeStyle=penCol(cur);line(ctx,cur,cam.z,cam.x,cam.y,cur.pts.length-1)}
     }
   });
   const end=e=>{
@@ -562,7 +669,7 @@ function makeInk(host,opts={}){
     if(e&&e.pointerType==="touch"){
       if(e.type==="pointercancel"&&multi)multi.ok=false;
       fingers.delete(e.pointerId);
-      if(multi){if(!fingers.size){const m=multi;multi=null;if(m.ok&&!cur&&Date.now()-m.t<=MT.dur&&Date.now()-lastPen>MT.palm)api.act(m.n===2?"undo":"redo",true)}return}
+      if(multi){if(!fingers.size){const m=multi;multi=null;if(m.ok&&!m.pz&&!cur&&Date.now()-m.t<=MT.dur&&Date.now()-lastPen>MT.palm)api.act(m.n===2?"undo":"redo",true)}else if(multi.pz)grab();return}
     }
     if(pan&&(!e||e.pointerId===pan.id)){pan=null;return}
     if(!cur||(e&&e.pointerId!==cur.id))return;
@@ -581,8 +688,24 @@ function makeInk(host,opts={}){
   const tguard=e=>{const t=e.changedTouches&&e.changedTouches[0];if(e.cancelable)e.preventDefault()};
   ["touchstart","touchmove","touchend"].forEach(t=>cv.addEventListener(t,tguard,{passive:false}));
   ["selectstart","contextmenu","dblclick","dragstart"].forEach(t=>wrap.addEventListener(t,e=>e.preventDefault()));
+  // Desktop: Ctrl (or Cmd) + wheel zooms around the cursor; browsers send a trackpad pinch the same way. A plain wheel scrolls the page as ever.
+  // A mouse wheel comes in big notches (100 or so), a trackpad pinch in small ones that need a stronger factor to feel right.
+  pad.addEventListener("wheel",e=>{
+    if(!e.ctrlKey&&!e.metaKey)return;e.preventDefault();if(cur||pan||multi)return;
+    const r=cv.getBoundingClientRect(),d=Math.max(-120,Math.min(120,e.deltaY*(e.deltaMode===1?16:1)));
+    activate();stopGlide();zoomAt(cam.z*Math.exp(-d*(e.deltaMode===0&&Math.abs(d)<40?.01:.002)),e.clientX-r.left,e.clientY-r.top);
+  },{passive:false});
+  // Safari: a pinch that starts on the pad must not zoom the whole site. On the iPad the fingers are already handled above (fingers is not empty);
+  // on a Mac trackpad there are no touches, and the gesture itself carries the scale.
+  let gz=0;
+  pad.addEventListener("gesturestart",e=>{e.preventDefault();gz=fingers.size||cur||pan?0:cam.z;if(gz){activate();stopGlide()}});
+  pad.addEventListener("gesturechange",e=>{e.preventDefault();if(gz&&!fingers.size&&e.scale>0){const r=cv.getBoundingClientRect();zoomAt(gz*e.scale,e.clientX-r.left,e.clientY-r.top)}});
+  pad.addEventListener("gestureend",e=>{e.preventDefault();gz=0});
+  // Which pad the mouse is over, for the zoom keys.
+  pad.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse")INK.hover=api});
+  pad.addEventListener("pointerleave",()=>{if(INK.hover===api)INK.hover=null});
   // The pad's side of the shared tool dock.
-  const api={pad,get blank(){return !strokes.some(s=>!s.calc&&s.t!=="hi")},get busy(){return busy},get undos(){return hist.length},get redos(){return redo.length},
+  const api={pad,get zoom(){return cam.z},get blank(){return !strokes.some(s=>!s.calc&&s.t!=="hi")},get busy(){return busy},get undos(){return hist.length},get redos(){return redo.length},
   act(a,say){
     tap=null;
     if(a==="undo"||a==="redo"){
@@ -593,7 +716,13 @@ function makeInk(host,opts={}){
     if(a==="clear"){clearSol();if(strokes.length&&!cur){snap();strokes=[];clearMarks();draw();changed()}}
     if(a==="calc")calc();
     if(a==="grow"){H+=220;size()}
-    if(a==="home"){if(strokes.length){const b=bbox();panTo(Math.min(0,b.x-12),Math.min(0,b.y-12))}else panTo(0,0)}
+    // Home is the way back when you are lost: the task and the work, at 100%.
+    if(a==="home"){if(strokes.length){const b=bbox();panTo(Math.min(0,b.x-12),Math.min(0,b.y-12),1)}else panTo(0,0,1)}
+    // Zoom buttons and keys: one step, around the middle of what is on screen. Taps in a row count from where the last one is heading.
+    if(a==="zin"||a==="zout"||a==="zreset"){
+      const z=zGoal||cam.z,nz=a==="zreset"?1:a==="zin"?ZOOM.steps.find(s=>s>z*1.02):ZOOM.steps.slice().reverse().find(s=>s<z/1.02);
+      if(nz&&!cur&&!pan&&!multi){const c=mid();panTo(0,0,nz,c.x,c.y)}
+    }
     syncDock();
   }};
   INK.pads.add(api);
@@ -702,7 +831,7 @@ function makeInk(host,opts={}){
         s.t=s.t==="hi"?"hi":"pen";const hi=s.t==="hi";if(!(hi?HIS:PENS).includes(s.c))s.c=hi?"yellow":"ink";if(![0,1,2].includes(s.w))s.w=1;
         return s.pts.length>0;
       });
-      if(strokes.length){const b=bbox();if(b.y+b.h>H&&b.y+b.h<3000){H=Math.ceil(b.y+b.h+30);size()}if(W&&(b.x>W-40||b.x+b.w<40||b.y>H-40||b.y+b.h<40)){cam.x=b.x-12;cam.y=b.y-12}}
+      if(strokes.length){const b=bbox();if(b.y+b.h>H&&b.y+b.h<3000){H=Math.ceil(b.y+b.h+30);size()}if(W&&(b.x>W/cam.z-40||b.x+b.w<40||b.y>H/cam.z-40||b.y+b.h<40)){cam.x=b.x-12;cam.y=b.y-12}}
       applyCam();syncDock();
     }};
 }
@@ -760,7 +889,7 @@ const CHECK_FMT=String.raw`Reply with only a JSON object of this shape:
    "check": "one quick self-check the student can do in their head next time, at most 25 words, math in $...$ (empty string if there is no good one)",
    "say": "3-5 short spoken sentences, see the rules below"},
   {"box": [x0, y0, x1, y1], "ok": true}],
- "board": [{"tex": "one line of the perfect written answer, as LaTeX without dollar signs, short enough for one handwritten line; words go in \\text{...}", "say": "what the tutor says while writing this line: 1-2 sentences"}],
+ "board": [{"tex": "one line of the perfect written answer, as LaTeX without dollar signs, short enough for one handwritten line; words go in \\text{...}", "say": [{"part": "the exact piece of this line's tex that the sentence is about", "text": "one short spoken sentence about that piece"}]}],
  "next": {"q": "one similar short question that tests the same rule with different numbers, Markdown, math in $...$", "a": "its answer in one line, math in $...$"} | null}
 Rules:
 - verdict: "correct" = method and final answer are right. "partly" = the method is right but there is a slip, or the answer is unfinished, or one of several parts is wrong. "wrong" = a rule or concept is misapplied, or the answer does not address the question.
@@ -772,7 +901,7 @@ Rules:
 - rule: name the real rule the step needed and state it correctly with general letters, for example {"name": "Square of a sum", "is": "$(a+b)^2=a^2+2ab+b^2$"}. Never state the student's wrong version as the rule.
 - why: name the misconception plainly, for example "You squared each term separately, as if powers distribute over a sum. They only distribute over products: $(ab)^2=a^2b^2$."
 - check: a concrete test that would have caught THIS error: plug in small numbers (and give the two results, which must really differ), compare with a rough decimal, multiply back, or put the answer into the original. Verify the arithmetic of the check before you write it.
-- board: the book answer exactly as it should be written on the page, following the reference answer, 2 to 6 lines, each following from the one before. The tutor writes it next to the student's work while speaking. In the one line where the student went wrong, wrap the corrected part in \\hl{...}.
+- board: the book answer exactly as it should be written on the page, following the reference answer, 2 to 6 lines, each following from the one before. The tutor writes it next to the student's work while speaking. Each line's "say" is 1 to 3 sentences, read aloud one after the other while that line is lit up. For every sentence, "part" is the piece of the line it talks about, and the page lights up exactly that piece while the sentence is read: copy it character for character out of this line's "tex", choose a complete sub-expression (a whole exponent, a numerator, one side of the equation, one factor, never half a command and never starting with ^ or _), prefer a piece that occurs only once in the line, and go through the line in the order a tutor would point at it: first what changed from the line above and which rule produced it, then the result. Use "part": "" only for a sentence about the line as a whole. Do not use \\hl.
 - next: only when a mark has kind "rule". One or two lines of work, same rule, different numbers. null when the verdict is correct or there are only slips.
 - Spoken text: "say", then each ok false mark's "say", then each board line's "say" are read aloud one after the other, like one tutor talking to "you". They must flow together and not repeat each other. No LaTeX and no symbols in spoken text: read the mathematics in words ("one plus r, all squared", "two thirds", "the natural log of a").
 - A mark's "say", in this order: where it is ("in your second line"), the rule by name and in plain words, why your step breaks it, what the step should be, and the quick check if there is one. For a slip: say it is a slip and that the method was right, then give the right number. If later lines carry the error forward, say so in one short sentence.
@@ -830,6 +959,43 @@ async function checkWork(p,ab,fb,btn,opt={}){
   }catch(e){if(hideFor(e&&e.code))SAMPLE=null;fb.textContent=e&&e.code==="invalid_json"?"The check came back garbled. Try again.":(errText(e)||"Stopped.");return null}
   finally{if(btn)btn.disabled=false}
 }
+// The book answer, line by line. Each line is explained in a few short sentences, and each sentence names the piece
+// of the line it is about, so exactly that piece can be lit up on the page while the sentence is read.
+function normBoard(a){
+  return (Array.isArray(a)?a:[]).filter(s=>s&&typeof s==="object"&&String(s.tex||"").trim()).slice(0,6).map(s=>{
+    const tex=String(s.tex).replace(/\$/g,"").replace(/#/g,"").replace(/\\hl\{/g,"\\boxed{");
+    const raw=Array.isArray(s.say)?s.say:[{part:"",text:s.say}];
+    const beats=raw.map(b=>typeof b==="string"?{part:"",text:b}:{part:chkStr(b&&b.part).replace(/\$/g,"").trim(),text:chkStr(b&&(b.text||b.say)).trim()}).filter(b=>b.text).slice(0,4);
+    return{tex,beats:beats.length?beats:[{part:"",text:""}]};
+  });
+}
+// Wraps the named pieces of a line as \class{hp hp-<n>}{...} so each can be styled on its own. A piece is used only
+// if it is a complete, balanced bit of the line's TeX and the line still typesets with it; otherwise that sentence
+// lights up the whole line, as before. Sets beat.j to the piece's number, or -1.
+function markParts(tex,beats){
+  const spans=[];
+  beats.forEach((b,j)=>{
+    b.j=-1;const p=b.part;if(!p||p===tex)return;
+    if(/^[\^_{}]/.test(p)||/[\^_{\\]$/.test(p))return;
+    let depth=0;for(const ch of p){if(ch==="{")depth++;else if(ch==="}"&&--depth<0)return}
+    if(depth)return;
+    const i=tex.indexOf(p);if(i<0)return;
+    const e=i+p.length;
+    if(/\\[a-zA-Z]*$/.test(tex.slice(0,i))&&/^[a-zA-Z]/.test(p))return;   // would start inside a command name
+    if(/\\[a-zA-Z]+$/.test(p)&&/^[a-zA-Z]/.test(tex.slice(e)))return;      // would end inside one
+    if(spans.some(s=>i<s.e&&e>s.i))return;                                 // overlaps a piece already marked
+    spans.push({i,e,j});b.j=j;
+  });
+  if(!spans.length)return tex;
+  // From the right, so earlier positions stay valid. Each piece is kept only if the line still typesets with it.
+  const ok=t=>{try{return !MathJax.tex2svg(t,{display:true}).querySelector("[data-mjx-error],mjx-merror")}catch(e){return false}};
+  let out=tex;
+  spans.sort((a,b)=>b.i-a.i).forEach(s=>{
+    const t=out.slice(0,s.i)+"\\class{hp hp-"+s.j+"}{"+out.slice(s.i,s.e)+"}"+out.slice(s.e);
+    if(ok(t))out=t;else beats[s.j].j=-1;
+  });
+  return out;
+}
 function renderCheck(r,ab,fb,useInk,auto,ref){
   r=r&&typeof r==="object"?r:{};
   const v=VERD[r.verdict]||VERD.partly;let marks=normMarks(r,ab,useInk);
@@ -857,10 +1023,10 @@ function renderCheck(r,ab,fb,useInk,auto,ref){
     row(ex,slip?"The slip":"Why",m.why);row(ex,"Correct step",m.fix);row(ex,"Quick check",m.check);
     li.onclick=()=>{if(useInk&&ab.ink)ab.ink.focus(i);ol.querySelectorAll("li").forEach(x=>x.classList.toggle("on",x===li))};ol.append(li)});
   // The corrected part of the book answer gets a box. Not a colour: \textcolor loads a MathJax extension on first use, and that load fails for good when two typesets overlap, as they do here. Not an underline: an underlined < reads as ≤.
-  const bd=normSteps(r.board).filter(b=>b.tex.trim()).slice(0,6).map(b=>({tex:b.tex.replace(/\\hl\{/g,"\\boxed{"),say:b.say}));
+  const bd=normBoard(r.board);
   // Handwriting: corrections and the book answer are written on the page, next to the work, whatever the verdict.
   const onPage=useInk,right=r.verdict==="correct",nE=errLines.length;
-  const book=!onPage?[]:bd.length?bd.map(b=>({tex:texHL(b.tex),say:b.say})):ref?[{md:ref,say:"Here is the book answer, written next to your work."}]:[];
+  const book=!onPage?[]:bd.length?bd.map(b=>({tex:markParts(b.tex,b.beats),beats:b.beats})):ref?[{md:ref,beats:[{j:-1,text:"Here is the book answer, written next to your work."}]}]:[];
   if(onPage)errLines.forEach((e,k)=>{e.r=k});
   if(ab.ink){ab.ink.setMarks(useInk?marks:[]);ab.ink.setSolution(onPage?[...errLines.map(e=>({n:e.n,md:e.note})),...book]:[])}
   // One similar question on the same rule, answer folded away. Only after a mistake.
@@ -868,9 +1034,9 @@ function renderCheck(r,ab,fb,useInk,auto,ref){
   if(nx&&nx.q){const d=fb.querySelector(".next"),da=d.querySelector("details");d.hidden=false;renderMD(nx.q,d.querySelector(".nq"),false);if(nx.a)renderMD(nx.a,da.querySelector(".prose"),false);else da.hidden=true}
   // Spoken order: the verdict, each circled mistake, then the correct solution step by step.
   const say=String(r.say||"").trim();
-  const lines=[...(say?[{tex:"",say}]:[]),...errLines,...book.map((b,k)=>({kind:"sol",r:nE+k,tex:"",say:b.say}))];
+  const lines=[...(say?[{tex:"",say}]:[]),...errLines,...book.flatMap((b,k)=>b.beats.filter(bt=>bt.text).map(bt=>({kind:"sol",r:nE+k,part:bt.j,tex:"",say:bt.text})))];
   // Typed answers have no page to write on: the model answer goes under the feedback instead.
-  if(!onPage&&bd.length){const dt=fb.querySelector(".sol");dt.hidden=false;renderMD(bd.map(b=>"$$"+texHL(b.tex)+"$$").join("\n\n"),dt.querySelector(".prose"),false)}
+  if(!onPage&&bd.length){const dt=fb.querySelector(".sol");dt.hidden=false;renderMD(bd.map(b=>"$$"+b.tex+"$$").join("\n\n"),dt.querySelector(".prose"),false)}
   // A correct answer is not read out; the voice is for explaining what went wrong.
   const willSpeak=!!(auto&&TTS&&lines.length&&!right);
   if(lines.length){const pl=makePlayer(fb.querySelector(".walk"),lines,useInk?ab.ink:null,true);if(willSpeak)pl.play()}
@@ -896,7 +1062,7 @@ function makePlayer(host,lines,ink,plain){
   let idx=0;
   const play=host.querySelector("[data-play]"),stop=host.querySelector("[data-stop]");
   const me={
-    at(i){idx=Math.max(0,Math.min(lines.length-1,i));[...list.children].forEach((el,k)=>el.classList.toggle("on",k===idx));const l=lines[idx];if(ink)ink.focus(l.kind==="mark"?l.i:-1);if(ink&&ink.reveal)ink.reveal(l.r!=null?l.r:-1);const el=list.children[idx];if(el&&!plain)el.scrollIntoView({block:"nearest",behavior:"smooth"})},
+    at(i){idx=Math.max(0,Math.min(lines.length-1,i));[...list.children].forEach((el,k)=>el.classList.toggle("on",k===idx));const l=lines[idx];if(ink)ink.focus(l.kind==="mark"?l.i:-1);if(ink&&ink.reveal)ink.reveal(l.r!=null?l.r:-1,l.part);const el=list.children[idx];if(el&&!plain)el.scrollIntoView({block:"nearest",behavior:"smooth"})},
     state(s){if(s==="idle"&&ink&&ink.revealAll)ink.revealAll();if(!play)return;play.textContent=s==="speaking"||s==="starting"?"❚❚ Pause":s==="paused"?"▶ Resume":"▶ Explain with voice";stop.hidden=s==="idle"},
     play(){}
   };
@@ -987,7 +1153,9 @@ function item(d,p,cid,srcTxt,onRated,opt={}){
   renderMD(p.a,ans,false);
   if(srcTxt){const s=document.createElement("p");s.className="note";s.style.margin="8px 0 0";s.textContent=srcTxt;ans.append(s)}
   let rated=false,wbtn=null;
-  const showRate=()=>{if(rated||!cid||!rt)return;rated=true;rateRow(typeof cid==="function"?cid():cid,rt,onRated)};
+  // verdict: the result of a check, which rates a course problem by itself. Training problems only join the deck
+  // when missed or rated by hand, so those still ask.
+  const showRate=verdict=>{if(rated||!cid||!rt)return;rated=true;const g=typeof cid==="string"?VERDICT_GRADE[verdict]:undefined;rateRow(typeof cid==="function"?cid():cid,rt,onRated,g===undefined?null:g)};
   if(SAMPLE&&rv){wbtn=document.createElement("button");wbtn.type="button";wbtn.className="btn";wbtn.textContent="Explain step by step";wbtn.hidden=true;rv.parentNode.append(wbtn);
     const wh=document.createElement("div");ans.after(wh);wbtn.onclick=()=>walkFor("Problem:\n"+p.q+"\n\nWorked solution:\n"+p.a,wh,wbtn)}
   if(rv)rv.onclick=()=>revealAnswer(rv,ab,fb,ans,()=>{showRate();if(wbtn)wbtn.hidden=false});
@@ -998,7 +1166,7 @@ function item(d,p,cid,srcTxt,onRated,opt={}){
     if(opt.onVerdict)opt.onVerdict(r);
     if(rv){rv.hidden=false;rv.dataset.seen="1";const typed=!(ab.mode==="ink"&&ab.hasInk());ans.hidden=!typed;rv.textContent=typed?"Hide answer":"Show the full written answer"}
     if(wbtn)wbtn.hidden=false;
-    showRate()};
+    showRate(r.verdict)};
   typesetNow(d);
   return{ab,fb,ans,showRate,reveal(){ans.hidden=false;if(rv){rv.textContent="Hide answer";rv.dataset.seen="1"}if(wbtn)wbtn.hidden=false}};
 }
@@ -1048,7 +1216,7 @@ async function viewLesson(L){
     <div class="lesson-nav">
       <div>${prev?`<a class="btn" href="#lesson-${prev.id}">← Previous</a>`:""}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${done?'<button class="btn sm" id="undoBtn">Undo done</button>':'<span class="note" id="doneNote" style="align-self:center">Marked done by itself once you have rated every practice problem.</span>'}
+        ${done?'<button class="btn sm" id="undoBtn">Undo done</button>':'<span class="note" id="doneNote" style="align-self:center">Marked done by itself once every practice problem is checked.</span>'}
         ${next?`<a class="btn" href="#lesson-${next.id}">Next →</a>`:""}
       </div>
     </div></article>${sidebar(L)}</div>`;
@@ -1064,14 +1232,25 @@ function completeLesson(L){
   if(S.done[L.id])return;
   S.done[L.id]=today();save();updateStats();
   const n=document.getElementById("doneNote");if(n){n.className="pill good";n.textContent="Session done · saved"}
+  const side=document.querySelector("#view aside");if(side)side.outerHTML=sidebar(L); // tick, streak and pace, without redrawing the pads
 }
 function showContent(L,c,fresh){
   CURC={id:L.id,c};
   const body=document.getElementById("body"),pr=document.getElementById("practice"),ex=document.getElementById("explain");
   const hasP=c.practice&&c.practice.length;
   if(fresh)TRIED[L.id]=TRIED[L.id]||"";
-  // Step 1: try first (pretesting), only on a lesson you haven't done yet.
-  if(hasP&&!S.done[L.id]&&!(L.id in TRIED)){
+  // What is already saved for this lesson: an answer counts as worked if it has ink or text.
+  const saved=ANS[L.id]?ANS[L.id].b:{},worked=a=>!!a&&((Array.isArray(a.strokes)&&a.strokes.length>0)||!!(a.text&&String(a.text).trim()));
+  // A lesson whose problems were all worked but never rated (written before checks rated themselves, or done on
+  // paper and only revealed) counts as done; what was never rated comes back in tomorrow's warm-up.
+  if(hasP&&!S.done[L.id]&&c.practice.slice(0,c.own||c.practice.length).every((p,k)=>S.rev[L.id+"#"+k]||worked(saved["p"+k]))){
+    c.practice.slice(0,c.own||c.practice.length).forEach((p,k)=>{const id=L.id+"#"+k;if(!S.rev[id])S.rev[id]={n:0,due:addDays(today(),1),last:today(),lapses:0}});
+    completeLesson(L);
+  }
+  // Step 1: try first (pretesting), only on a lesson you haven't started yet. Coming back to a lesson you have
+  // already written in goes straight to it.
+  const started=Object.keys(saved).some(k=>worked(saved[k]));
+  if(hasP&&!S.done[L.id]&&!(L.id in TRIED)&&!started){
     pr.innerHTML="";ex.innerHTML="";
     body.innerHTML=`<div class="gate"><div class="eyebrow step">Step 1 of 4 · Try first</div>
       <p style="margin:6px 0 0">Before reading, give this 2–3 minutes. You're not expected to solve it yet. Attempting first, even wrongly, makes the lesson stick better.${SAMPLE?" Then tap Check my attempt: your page gets marked, with green ticks for what is right and red circles where something went wrong, and the book answer is written next to your work. Mistakes are explained aloud.":""}</p>
@@ -1107,8 +1286,28 @@ function showContent(L,c,fresh){
       <div class="fb" hidden></div><div class="ans" hidden></div><div class="rate" hidden></div></div>`).join("")}</section>`;
   const cards=[...pr.querySelectorAll(".q")];
   // Done = every problem rated, whether today or on an earlier visit.
-  const allRated=()=>c.practice.every((p,k)=>S.rev[L.id+"#"+k]);
+  // Extra problems asked for later are a bonus: the session is done when its own problems are.
+  const allRated=()=>c.practice.slice(0,c.own||c.practice.length).every((p,k)=>S.rev[L.id+"#"+k]);
   const its=c.practice.map((p,k)=>item(cards[k],p,L.id+"#"+k,"",()=>{if(allRated())completeLesson(L)},{ans:bind(L.id,"p"+k)}));
+  // More problems on this topic, as many rounds as wanted. They aim at what went badly so far.
+  if(SAMPLE){
+    const more=document.createElement("div");more.className="lesson-nav";more.style.marginTop="18px";
+    more.innerHTML='<span class="note" style="align-self:center;max-width:46ch">Want it to sit deeper? Get more problems on this topic. They lean towards whatever went badly so far.</span><button type="button" class="btn" id="moreBtn">Write 4 more problems</button>';
+    pr.querySelector("section").append(more);
+    const mb=more.querySelector("#moreBtn"),note=more.querySelector(".note");
+    mb.onclick=async()=>{
+      mb.disabled=true;mb.textContent="Writing…";
+      const weak=c.practice.map((p,k)=>({p,r:S.rev[L.id+"#"+k]})).filter(x=>x.r&&(x.r.n===0||x.r.lapses>0)).map(x=>x.p.q);
+      try{
+        const r=await SAMPLE.json("You write practice problems for a beginner preparing for the UZH/ETH MSc Quantitative Finance admission interview.\n\nThe lesson they just studied:\n<<<\n"+String(c.md).slice(0,6000)+"\n>>>\n\nProblems they already have (do not repeat these or simple renumberings of them):\n"+c.practice.map((p,k)=>(k+1)+". "+p.q).join("\n")+(weak.length?"\n\nThey struggled with these, so at least two of the new problems should train the same rule from another angle:\n"+weak.map(q=>"- "+q).join("\n"):"")+"\n\nWrite 4 NEW problems on this lesson's topic, ordered from easier to harder. Each trains one rule of the lesson; together they cover the rules that have had the least practice. Vary the form: a direct computation, one that has to be set up from words, one 'find the mistake in this working', one that needs two rules in a row. Each must be solvable by hand.\n\n"+String.raw`Reply with only a JSON array: [{"q": "the problem, Markdown with math in $...$", "a": "a complete worked solution, step by step, Markdown with math in $...$"}]. Double every LaTeX backslash inside the JSON strings. No HTML. Never use the dollar sign for money.`,{cache:false});
+        const items=(Array.isArray(r)?r:(r&&Array.isArray(r.problems)?r.problems:[])).filter(x=>x&&x.q&&x.a).slice(0,4).map(x=>({q:String(x.q),a:String(x.a)}));
+        if(!items.length)throw{code:"empty_completion"};
+        await addMore(L.id,items);
+        if(CUR!==L)return;
+        const at=window.scrollY;showContent(L,await loadLesson(L.id));window.scrollTo(0,at);
+      }catch(e){mb.disabled=false;mb.textContent="Write 4 more problems";note.textContent=e&&e.code==="invalid_json"?"The problems came back garbled. Try again.":(errText(e)||"Stopped.")}
+    };
+  }
   const t=TRIED[L.id];
   if(t&&typeof t==="object"&&its[0]&&!(ANS[L.id]&&ANS[L.id].b.p0)){const ab=its[0].ab;if(t.mode==="ink"&&t.strokes&&t.strokes.length){ab.set("ink");ab.ink.load(t.strokes)}else if(t.text){ab.set("text");ab.ta.value=t.text}ab.changed()}
   typesetNow(body);

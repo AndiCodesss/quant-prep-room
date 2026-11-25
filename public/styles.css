@@ -225,7 +225,10 @@ html.inking,html.inking *{-webkit-user-select:none!important;user-select:none!im
 .ink-sol .sl-h{margin-top:6px}
 .ink-sol .sl-h{font:600 11px var(--f-ui);letter-spacing:.08em;text-transform:uppercase;opacity:.85;padding:0 8px}
 .ink-sol .sl{margin:2px 0;padding:1px 8px;border-radius:8px}
-.ink-sol .sl.cur{background:var(--warn-soft);color:var(--warn);box-shadow:0 0 0 1.5px var(--warn)}
+/* the line being read is framed; inside it, the piece the sentence is about is coloured */
+.ink-sol .sl.cur{background:var(--warn-soft);box-shadow:0 0 0 1.5px var(--warn)}
+.ink-sol .sl.cur.whole{color:var(--warn)}
+.ink-sol .hp.now{fill:var(--red);stroke:var(--red);stroke-width:26}
 .ink-sol mjx-container[display="true"]{margin:.35em 0!important;text-align:left!important}
 .ink-sol mjx-container svg{max-width:100%;height:auto}
 @media (prefers-reduced-motion:no-preference){.ink-sol .sl{transition:background .25s,color .25s,box-shadow .25s}}
@@ -409,3 +412,12 @@ body.login{min-height:100vh;min-height:100dvh;display:grid;place-items:center;pa
 @media (max-width:520px){.nt{grid-template-columns:minmax(0,1fr) auto}.nt-s{grid-column:1/-1}}
 .voicepop .vrow{display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;margin-top:8px}
 .voicepop .vrow span{color:var(--muted);font-size:13px}
+
+/* Pad zoom: the printed task, the marks and the book answer scale from their own corner together with the ink (see applyCam).
+   A pinch that starts on the pad zooms the pad, never the whole site. */
+.ink-marks,.ink-sol,.ink-task{transform-origin:0 0}
+.ink-pad{touch-action:none}
+.inkdock>.zpct{grid-column:1/-1;min-height:28px;font:600 11.5px var(--f-mono);letter-spacing:-.02em;color:var(--muted);font-variant-numeric:tabular-nums}
+.inkdock>.zpct.z{color:var(--accent)}
+.inkdock.min>.zpct.z:not(.grip):not(.fold):not(.on){display:grid}
+@media (max-width:700px){.inkdock>.zpct{min-height:36px;min-width:38px}.inkdock>[data-a="zin"],.inkdock>[data-a="zout"]{min-width:32px}}
