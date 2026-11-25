@@ -193,6 +193,51 @@ function notationBoxes(el){
     spot.before(d);
   });
 }
+/* ---------------- A short video for the lesson ---------------- */
+// Under the lesson's opening paragraph: a short YouTube explanation (under five minutes), shown as a thumbnail
+// and loaded from YouTube only when played. Week 1 has hand-picked videos (VIDEOS in curriculum.js); any lesson
+// can be given another one by pasting a link, which is saved with the rest of the progress.
+const ytId=u=>{const s=String(u||"").trim(),m=/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(s)||/^([\w-]{11})$/.exec(s);return m?m[1]:""};
+const fmtLen=s=>s?Math.floor(s/60)+":"+String(s%60).padStart(2,"0"):"";
+async function lessonVideo(L,body){
+  const host=document.createElement("div");host.className="vid";
+  (body.querySelector(".lead")||body.firstElementChild||body).after(host);
+  let own=null;const raw=lsGet("qpr-video-"+L.id);if(raw){try{own=JSON.parse(raw)}catch(e){}}
+  if(!own&&COL){try{const sn=await COL.doc("video-"+L.id).get();if(sn.exists)own=sn.data()}catch(e){}}
+  if(!host.isConnected)return;
+  const store=v=>{own=v;lsSet("qpr-video-"+L.id,JSON.stringify(v));if(COL)COL.doc("video-"+L.id).set(v).catch(()=>{})};
+  const find=`<a href="https://www.youtube.com/results?search_query=${encodeURIComponent(L.title+" explained")}&sp=EgIYAQ%253D%253D" target="_blank" rel="noopener">Search YouTube for videos under 4 minutes</a>`;
+  function form(){
+    if(host.querySelector(".vid-form"))return;
+    const f=document.createElement("div");f.className="vid-form";
+    f.innerHTML=`<input type="url" inputmode="url" placeholder="Paste a YouTube link" aria-label="YouTube link"><button type="button" class="btn sm primary">Use this video</button>${own&&own.id&&VIDEOS[L.id]?'<button type="button" class="btn sm" data-back>Back to the suggested one</button>':""}<span class="note">${find}</span><span class="note" data-msg></span>`;
+    host.querySelector(".vid-meta").append(f);
+    const inp=f.querySelector("input");
+    f.querySelector(".primary").onclick=()=>{const id=ytId(inp.value);if(!id){f.querySelector("[data-msg]").textContent="That doesn't look like a YouTube link.";return}store({id,title:"",by:""});paint()};
+    const back=f.querySelector("[data-back]");if(back)back.onclick=()=>{store({id:""});paint()};
+    inp.focus();
+  }
+  function paint(){
+    const v=own&&own.id?own:VIDEOS[L.id];
+    host.classList.remove("open");
+    if(!v){host.innerHTML='<div class="vid-meta"><div class="eyebrow">Short video</div><div class="note">No video is linked to this lesson yet. Find a short one you like and paste its link.</div></div>';form();return}
+    host.innerHTML='<button type="button" class="vid-play" aria-label="Play the video"><img alt="" loading="lazy"><span class="vid-go">▶</span></button><div class="vid-meta"><div class="eyebrow"></div><div class="vid-t"></div><div class="note vid-by"></div><div><button type="button" class="btn sm" data-change>Use another video</button></div></div>';
+    host.querySelector("img").src="https://i.ytimg.com/vi/"+v.id+"/hqdefault.jpg";
+    host.querySelector(".eyebrow").textContent="Short video"+(v.sec?" · "+fmtLen(v.sec):"");
+    host.querySelector(".vid-t").textContent=v.title||"Your video for this lesson";
+    host.querySelector(".vid-by").textContent=(v.by?"by "+v.by+", ":"")+"on YouTube";
+    host.querySelector(".vid-play").onclick=e=>{
+      hush();
+      const f=document.createElement("iframe");f.className="vid-frame";f.title=v.title||"Lesson video";
+      f.src="https://www.youtube-nocookie.com/embed/"+v.id+"?autoplay=1&rel=0&playsinline=1";
+      f.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";f.allowFullscreen=true;
+      f.referrerPolicy="strict-origin-when-cross-origin"; // YouTube refuses to play (error 153) when the page sends no referrer at all
+      host.classList.add("open");e.currentTarget.replaceWith(f);
+    };
+    host.querySelector("[data-change]").onclick=form;
+  }
+  paint();
+}
 const doneCount=()=>LESSONS.filter(l=>S.done[l.id]).length;
 const nextLesson=()=>LESSONS.find(l=>!S.done[l.id])||LESSONS[LESSONS.length-1];
 function streak(){const days=new Set(Object.values(S.done));let d=new Date();if(!days.has(isoOf(d)))d.setDate(d.getDate()-1);let n=0;while(days.has(isoOf(d))){n++;d.setDate(d.getDate()-1)}return n}
@@ -1276,6 +1321,7 @@ function showContent(L,c,fresh){
   }
   // Step 2: the lesson.
   renderLesson(c.md,body);
+  lessonVideo(L,body);
   const tag=document.createElement("div");tag.className="eyebrow step";tag.style.marginBottom="6px";tag.textContent="Step 2 of 4 · Lesson";body.prepend(tag);
   if(!HAND[L.id]&&SAMPLE){const r=document.createElement("p");r.className="note";r.innerHTML='Written for you by Claude. <button class="btn" id="regen" style="margin-left:6px;padding:3px 9px;font-size:12.5px">Rewrite this lesson</button>';tag.after(r);document.getElementById("regen").onclick=()=>generate(L,true)}
   if(SAMPLE){const w=document.createElement("div");w.style.margin="4px 0 8px";w.innerHTML='<button type="button" class="btn sm" id="talk">Talk me through this lesson</button><span class="note" style="margin-left:8px">Tap any formula to see how to read it in words. All signs are listed under <a href="#symbols">Symbols</a>.</span><div id="talkBox"></div>';tag.after(w);

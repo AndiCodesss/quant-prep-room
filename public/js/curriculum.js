@@ -358,6 +358,17 @@ practice:[
 ]}
 };
 
+/* ---------------- Short videos ---------------- */
+// One YouTube explanation under five minutes per lesson: [video id, title, channel, length in seconds].
+// Length and embedding were checked on 25 Nov 2026. A lesson without an entry asks for a link instead.
+const VIDEOS={
+ w1d1:{id:"aiTRQzVHAVE",title:"Laws of Exponents Explained with Examples",by:"Rashi Goel",sec:115},
+ w1d2:{id:"daUlTsnCNRQ",title:"Natural Logarithms",by:"The Organic Chemistry Tutor",sec:169},
+ w1d3:{id:"OmxdT5RzMq0",title:"Quadratic Formula: When to Use?",by:"Mario's Math Tutoring",sec:200},
+ w1d4:{id:"IEzlvswCdn4",title:"Domain, Codomain and Notation of a Function",by:"Math Stuff",sec:268},
+ w1d5:{id:"bjiDMt1X7oQ",title:"Introduction to Basic Statistical Notation: Sigma and Summation",by:"Jason Popan",sec:207}
+};
+
 /* ---------------- Interview set (self-assessment topics) ---------------- */
 const TARGETS=[
  {g:"Calculus",items:[
