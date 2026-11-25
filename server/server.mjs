@@ -55,14 +55,29 @@ function sameOrigin(req) {
   return origin === `http://${req.headers.host}` || origin === `https://${req.headers.host}`;
 }
 
-function serveStatic(req, res, pathname) {
+// Pages are never cached. The scripts and styles they load are addressed with a version taken from the file's
+// last change (/js/app.js?v=...), so they can be cached for good and an update still shows on the next reload,
+// whatever a CDN in front of the server does with cache headers.
+function versioned(html) {
+  return html.replace(/(src|href)="(\/(?:js\/[\w.-]+\.js|styles\.css))"/g, (m, attr, url) => {
+    try { return `${attr}="${url}?v=${Math.round(fs.statSync(path.join(config.publicDir, url)).mtimeMs).toString(36)}"`; }
+    catch { return m; }
+  });
+}
+
+function serveStatic(req, res, pathname, isVersioned) {
   let rel = pathname === "/" ? "/index.html" : pathname === "/login" ? "/login.html" : pathname;
   const file = path.join(config.publicDir, path.normalize(rel));
   if (!file.startsWith(config.publicDir + path.sep)) return sendJson(res, 404, { error: "not_found" });
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return sendJson(res, 404, { error: "not_found" });
+    const type = TYPES[path.extname(file)] || "application/octet-stream";
+    if (file.endsWith(".html")) {
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+      return res.end(req.method === "HEAD" ? undefined : versioned(fs.readFileSync(file, "utf8")));
+    }
     const etag = `"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}"`;
-    const headers = { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag };
+    const headers = { "Content-Type": type, "Cache-Control": isVersioned ? "public, max-age=31536000, immutable" : "no-cache", ETag: etag };
     if (req.headers["if-none-match"] === etag) { res.writeHead(304, headers); return res.end(); }
     res.writeHead(200, headers);
     if (req.method === "HEAD") return res.end();
@@ -163,8 +178,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Strict-Transport-Security", "max-age=31536000");
-  let pathname;
-  try { pathname = decodeURIComponent(new URL(req.url, "http://x").pathname); }
+  let pathname, isVersioned;
+  try { const u = new URL(req.url, "http://x"); pathname = decodeURIComponent(u.pathname); isVersioned = u.searchParams.has("v"); }
   catch { return sendJson(res, 400, { error: "bad_request" }); }
   try {
     if (pathname.startsWith("/api/")) return await api(req, res, pathname);
@@ -174,7 +189,7 @@ const server = http.createServer(async (req, res) => {
     const authed = isAuthed(req);
     if (pathname === "/login" && authed) { res.writeHead(302, { Location: "/" }); return res.end(); }
     if (!authed && !PUBLIC_WITHOUT_LOGIN.has(pathname)) { res.writeHead(302, { Location: "/login", "Cache-Control": "no-store" }); return res.end(); }
-    serveStatic(req, res, pathname);
+    serveStatic(req, res, pathname, isVersioned);
   } catch (e) {
     if (!e.status) console.error(new Date().toISOString(), "[http]", req.method, pathname, e);
     if (!res.headersSent) sendJson(res, e.status || 500, { error: e.status ? e.message : "server_error" });
